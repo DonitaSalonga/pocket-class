@@ -47,8 +47,8 @@ protocol Backend: Sendable {
     func joinCourse(code: String) async throws -> Course
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, invalidJoinCode
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid." } }
 }
 
 actor InMemoryBackend: Backend {
@@ -89,9 +89,9 @@ actor InMemoryBackend: Backend {
         return store.courses.filter { store.memberships.contains("\(user.id):\($0.id)") }
     }
     func joinCourse(code: String) throws -> Course {
-        guard let user = currentUser(), user.role == .student else { throw BackendError.notATeacher }
+        guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard let course = store.courses.first(where: { $0.joinCode == normalized }) else { throw BackendError.invalidJoinCode }
+        guard let course = store.courses.first(where: { $0.joinCode.uppercased() == normalized }) else { throw BackendError.invalidJoinCode }
         store.memberships.insert("\(user.id):\(course.id)")
         return course
     }
