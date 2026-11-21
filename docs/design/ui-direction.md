@@ -23,6 +23,8 @@ Inspiration lives in [inspo/](inspo/). Take the mood from it, never copy a scree
 
 Prices, ratings, progress, chat, leaderboard, notifications, search, categories, deadlines, points and certificates. None are in the plan.
 
-## Process
+## Chosen variation: B
 
-Before the real screens, build a throwaway prototype with 2–3 style variations so the owner can pick one (`/prototype`). Only start when the owner says build.
+The owner picked variation **B** from the prototype on branch `prototype/ui-variations` (folder `prototype/variations/`, screenshots `B-*.png`): bold colour-blocked course cards (deep green, amber, lilac) with a large faint index number, deep-green accent for the selected chip, tab and primary buttons, white file rows with a type badge. Port its look into the real app; do not copy prototype code wholesale.
+
+Fix in the real app what the prototype got wrong: Teachers must see "+ New Course" and Students "Join with code" on the Courses screen; no tab bar on sign-in or sign-up; file lists sorted newest first.
