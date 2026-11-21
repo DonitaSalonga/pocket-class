@@ -34,8 +34,20 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
-        guard let user = try await currentUser(), user.role == .teacher else { return [] }
         return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+    }
+    func joinCourse(code: String) async throws -> Course {
+        struct JoinRequest: Encodable { let join_code_input: String }
+        do {
+            return try await client.rpc("join_course", params: JoinRequest(join_code_input: code)).execute().value
+        } catch let error as PostgrestError {
+            // Codes raised by join_course: P0001 wrong Join Code, 42501 caller is not a Student.
+            switch error.code {
+            case "P0001": throw BackendError.invalidJoinCode
+            case "42501": throw BackendError.notAStudent
+            default: throw error
+            }
+        }
     }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)

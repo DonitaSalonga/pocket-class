@@ -69,13 +69,14 @@ protocol Backend: Sendable {
     func profile(id: UUID) async throws -> AppUser?
     func createCourse(name: String, description: String?) async throws -> Course
     func myCourses() async throws -> [Course]
+    func joinCourse(code: String) async throws -> Course
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
     func allFiles() async throws -> [CourseFile]
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, unsupportedFileType, fileTooLarge
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
 }
 
 extension Backend {
@@ -86,7 +87,7 @@ extension Backend {
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var files: [CourseFile] = [] }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: Set<String> = []; fileprivate var files: [CourseFile] = [] }
     private let store: Store
     init(store: Store = Store()) { self.store = store }
 
@@ -116,7 +117,18 @@ actor InMemoryBackend: Backend {
         store.courses.append(course)
         return course
     }
-    func myCourses() -> [Course] { guard let user = currentUser(), user.role == .teacher else { return [] }; return store.courses.filter { $0.teacherID == user.id } }
+    func myCourses() -> [Course] {
+        guard let user = currentUser() else { return [] }
+        if user.role == .teacher { return store.courses.filter { $0.teacherID == user.id } }
+        return store.courses.filter { store.memberships.contains("\(user.id):\($0.id)") }
+    }
+    func joinCourse(code: String) throws -> Course {
+        guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard let course = store.courses.first(where: { $0.joinCode.uppercased() == normalized }) else { throw BackendError.invalidJoinCode }
+        store.memberships.insert("\(user.id):\(course.id)")
+        return course
+    }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }

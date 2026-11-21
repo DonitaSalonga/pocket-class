@@ -246,3 +246,60 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     #expect(rows.count == 1)
     await cleanUp(rows, with: teacher.raw)
 }
+
+@Test func studentJoinsCourseWithCodeAndSeesIt() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Join Biology"), description: nil)
+    let student = try await signedIn(.studentA)
+    let joined = try await student.backend.joinCourse(code: " \(course.joinCode.lowercased()) ")
+    #expect(joined == course)
+    #expect(try await student.backend.myCourses().contains(course))
+    // Joining twice is a no-op, not an error and not a second Roster row.
+    #expect(try await student.backend.joinCourse(code: course.joinCode) == course)
+    #expect(try await student.backend.myCourses().filter { $0.id == course.id }.count == 1)
+    // The Teacher still lists own Courses: the courses and Roster policies must not recurse.
+    #expect(try await teacher.backend.myCourses().contains(course))
+}
+
+@Test func wrongJoinCodeIsRefusedWithTypedError() async throws {
+    let student = try await signedIn(.studentA)
+    await #expect(throws: BackendError.invalidJoinCode) { try await student.backend.joinCourse(code: "ZZZZZZ") }
+}
+
+@Test func outsiderCannotReadCourseTheyDidNotJoin() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Outsider Biology"), description: nil)
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    let outsider = try await signedIn(.outsider)
+    let rows: [Course] = try await outsider.raw.from("courses").select().eq("id", value: course.id.uuidString).execute().value
+    #expect(rows.isEmpty)
+    #expect(try await outsider.backend.myCourses().contains { $0.id == course.id } == false)
+    let roster: [Membership] = try await outsider.raw.from("course_memberships").select().execute().value
+    #expect(roster.contains { $0.courseID == course.id } == false)
+}
+
+@Test func teacherCannotJoinACourse() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Teacher Join"), description: nil)
+    await #expect(throws: BackendError.notAStudent) { try await teacher.backend.joinCourse(code: course.joinCode) }
+    let other = try await signedIn(.teacherB)
+    await #expect(throws: BackendError.notAStudent) { try await other.backend.joinCourse(code: course.joinCode) }
+}
+
+@Test func onlyTheCoursesTeacherSeesItsRoster() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster Biology"), description: nil)
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    let seenByTeacher: [Membership] = try await teacher.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(seenByTeacher.count == 1)
+    let otherTeacher = try await signedIn(.teacherB)
+    let seenByOther: [Membership] = try await otherTeacher.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(seenByOther.isEmpty)
+}
+
+private struct Membership: Decodable {
+    let courseID: UUID
+    enum CodingKeys: String, CodingKey { case courseID = "course_id" }
+}
