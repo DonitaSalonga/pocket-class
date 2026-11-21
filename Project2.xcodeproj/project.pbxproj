@@ -20,6 +20,7 @@
 		8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */; };
 		8D853C1ACDA77388D1485503 /* UploadFileForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA997659C4F383A1E1800BC /* UploadFileForm.swift */; };
 		9C192556193ABF75930F973A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 746C74198CFBB1D3F5B6394D /* Supabase */; };
+		A24A5B076E8387966D6407BD /* CourseAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8B1C44D04135B72505569E /* CourseAdminTests.swift */; };
 		D884DEC14D247057855630F2 /* JoinCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */; };
 		E2BDA113FCC2B01066F01D61 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 9B4FF36BE6467A645FED45D6 /* sample.pdf */; };
 		F09C99FAC5840E3272577282 /* CourseFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */; };
@@ -60,6 +61,7 @@
 		B7C8474F8F14772198705A82 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
 		BFB13B25F40DFA38650E09FC /* CourseDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDetail.swift; sourceTree = "<group>"; };
 		CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseBackend.swift; sourceTree = "<group>"; };
+		ED8B1C44D04135B72505569E /* CourseAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseAdminTests.swift; sourceTree = "<group>"; };
 		FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -106,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */,
+				ED8B1C44D04135B72505569E /* CourseAdminTests.swift */,
 				8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */,
 			);
 			name = Tests;
@@ -274,6 +277,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				44E5E1DADCEF7898A81EEC80 /* AuthBackendTests.swift in Sources */,
+				A24A5B076E8387966D6407BD /* CourseAdminTests.swift in Sources */,
 				F09C99FAC5840E3272577282 /* CourseFileTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

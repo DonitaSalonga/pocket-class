@@ -63,6 +63,29 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func allFiles() async throws -> [CourseFile] {
         try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
     }
+    func regenerateJoinCode(courseID: UUID) async throws -> String {
+        struct Request: Encodable { let course_id_input: UUID }
+        do {
+            return try await client.rpc("regenerate_join_code", params: Request(course_id_input: courseID)).execute().value
+        } catch let error as PostgrestError where error.code == "42501" {
+            throw BackendError.notATeacher
+        }
+    }
+    /// Removes stored objects first, then the Course row (memberships and file rows cascade).
+    /// If object removal fails, nothing else changed and the Teacher can retry. If the row delete fails after objects are gone,
+    /// the Course and its file rows remain but their files are missing; retrying finishes the delete.
+    /// Non-owners are stopped by storage policy (nothing removed) and by RLS (no row deleted, reported as notATeacher).
+    func deleteCourse(_ course: Course) async throws {
+        let bucket = client.storage.from("course-files")
+        let folder = course.id.uuidString.lowercased()
+        while true {
+            let objects = try await bucket.list(path: folder, options: .init(limit: 1000))
+            if objects.isEmpty { break }
+            _ = try await bucket.remove(paths: objects.map { "\(folder)/\($0.name)" })
+        }
+        let deleted: [Course] = try await client.from("courses").delete().eq("id", value: course.id.uuidString).select().execute().value
+        guard !deleted.isEmpty else { throw BackendError.notATeacher }
+    }
     private static func mimeType(_ ext: String) -> String {
         switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }
     }

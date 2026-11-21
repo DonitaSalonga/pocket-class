@@ -73,6 +73,10 @@ protocol Backend: Sendable {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
     func allFiles() async throws -> [CourseFile]
+    /// Returns the new Join Code; the old one stops working immediately. Owning Teacher only.
+    func regenerateJoinCode(courseID: UUID) async throws -> String
+    /// Removes the Course with its Roster and files. Owning Teacher only.
+    func deleteCourse(_ course: Course) async throws
 }
 
 enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge
@@ -83,6 +87,8 @@ extension Backend {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
     func files(courseID: UUID) async throws -> [CourseFile] { [] }
     func allFiles() async throws -> [CourseFile] { [] }
+    func regenerateJoinCode(courseID: UUID) async throws -> String { throw BackendError.notConfigured }
+    func deleteCourse(_ course: Course) async throws { throw BackendError.notConfigured }
 }
 
 actor InMemoryBackend: Backend {
@@ -143,5 +149,24 @@ actor InMemoryBackend: Backend {
         guard let user = currentUser(), user.role == .teacher else { return [] }
         let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
         return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+    }
+    func regenerateJoinCode(courseID: UUID) async throws -> String {
+        guard let user = currentUser(), let index = store.courses.firstIndex(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        let old = store.courses[index]
+        let alphabet = Array("23456789ABCDEFGHJKLMNPQRSTUVWXYZ")
+        var code: String
+        repeat { code = String((0..<6).map { _ in alphabet.randomElement()! }) } while store.courses.contains { $0.joinCode == code }
+        store.courses[index] = Course(id: old.id, teacherID: old.teacherID, name: old.name, description: old.description, joinCode: code, createdAt: old.createdAt)
+        return code
+    }
+    func deleteCourse(_ course: Course) async throws {
+        guard let user = currentUser(), store.courses.contains(where: { $0.id == course.id && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        store.courses.removeAll { $0.id == course.id }
+        store.files.removeAll { $0.courseID == course.id }
+        store.memberships = store.memberships.filter { !$0.hasSuffix(":\(course.id)") }
+    }
+    /// Test hook: nothing under the Course survives, not even rows another Teacher or Student could reach.
+    func hasNoRowsFor(courseID: UUID) -> Bool {
+        !store.courses.contains { $0.id == courseID } && !store.files.contains { $0.courseID == courseID } && !store.memberships.contains { $0.hasSuffix(":\(courseID)") }
     }
 }
