@@ -116,11 +116,12 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
 
 @Test func studentsAndSignedOutUsersCannotReadCourses() async throws {
     let teacher = try await signedIn(.teacherA)
-    _ = try await teacher.backend.createCourse(name: unique("Biology"), description: nil)
+    let course = try await teacher.backend.createCourse(name: unique("Biology"), description: nil)
     let student = try await signedIn(.studentB)
     let studentRaw = student.raw
+    // Pool Students sit on other Rosters, so the list is not empty; it just must not hold a Course they did not join.
     let seenByStudent: [Course] = try await studentRaw.from("courses").select().execute().value
-    #expect(seenByStudent.isEmpty)
+    #expect(seenByStudent.contains { $0.id == course.id } == false)
     let anon = try await rawClient()
     let seenByAnon: [Course] = (try? await anon.from("courses").select().execute().value) ?? []
     #expect(seenByAnon.isEmpty)
