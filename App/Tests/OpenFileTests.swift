@@ -63,3 +63,23 @@ private func courseWithFile(store: InMemoryBackend.Store, cache: FileCache, data
     let url = try await teacher.download(file: file)
     #expect(url.lastPathComponent == "Week 1: Intro-Cells.pdf")
 }
+
+@Test func deletingAFileRemovesItsCachedCopy() async throws {
+    let cache = tempCache()
+    let (teacher, _, file) = try await courseWithFile(store: .init(), cache: cache)
+    let url = try await teacher.download(file: file)
+    try await teacher.deleteFile(file)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    #expect(!FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
+}
+
+@Test func renamedFileKeepsItsCachedCopyOffline() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, _, file) = try await courseWithFile(store: store, cache: tempCache())
+    _ = try await teacher.download(file: file)
+    let renamed = try await teacher.renameFile(id: file.id, title: "Renamed")
+    store.offline = true
+    let url = try await teacher.download(file: renamed)
+    #expect(url.lastPathComponent == "Renamed.pdf")
+    #expect(try Data(contentsOf: url) == Data("hello".utf8))
+}

@@ -75,6 +75,10 @@ protocol Backend: Sendable {
     func allFiles() async throws -> [CourseFile]
     /// Local file URL for a Course file. Served from the on-device cache when present, so opened files work offline.
     func download(file: CourseFile) async throws -> URL
+    /// Changes only the title (trimmed, never blank) and returns the updated file.
+    func renameFile(id: UUID, title: String) async throws -> CourseFile
+    /// Removes the stored object and the row, so the file disappears for everyone.
+    func deleteFile(_ file: CourseFile) async throws
 }
 
 /// Downloaded files live in Caches (the system may purge them) as `<file id>/<title>.<ext>`, so Quick Look and the share sheet show the title.
@@ -87,10 +91,13 @@ struct FileCache: Sendable {
         return directory.appendingPathComponent(file.id.uuidString).appendingPathComponent("\(title).\(file.fileType)")
     }
     func clear() { try? FileManager.default.removeItem(at: directory) }
+    func remove(_ file: CourseFile) { try? FileManager.default.removeItem(at: url(for: file).deletingLastPathComponent()) }
     /// Cached copy if present, else `fetch` and keep it. A fetch failure with no copy propagates.
     func open(_ file: CourseFile, fetch: () async throws -> Data) async throws -> URL {
         let url = url(for: file)
         if FileManager.default.fileExists(atPath: url.path) { return url }
+        // A rename changes the file name but not the id, so keep the copy instead of downloading it again.
+        if let old = try? FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil).first, (try? FileManager.default.moveItem(at: old, to: url)) != nil { return url }
         let data = try await fetch()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try data.write(to: url, options: .atomic)
@@ -98,8 +105,8 @@ struct FileCache: Sendable {
     }
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge, fileUnavailable
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller."; case .fileUnavailable: "This file is not available." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge, fileUnavailable, blankTitle, fileNotFound
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller."; case .fileUnavailable: "This file is not available."; case .blankTitle: "Enter a title."; case .fileNotFound: "This file no longer exists, or you cannot change it." } }
 }
 
 extension Backend {
@@ -107,6 +114,8 @@ extension Backend {
     func files(courseID: UUID) async throws -> [CourseFile] { [] }
     func allFiles() async throws -> [CourseFile] { [] }
     func download(file: CourseFile) async throws -> URL { throw BackendError.notConfigured }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile { throw BackendError.notConfigured }
+    func deleteFile(_ file: CourseFile) async throws { throw BackendError.notConfigured }
 }
 
 actor InMemoryBackend: Backend {
@@ -178,5 +187,23 @@ actor InMemoryBackend: Backend {
     func download(file: CourseFile) async throws -> URL {
         guard let user = currentUser(), user.role == .student ? isMember(user, file.courseID) : store.courses.contains(where: { $0.id == file.courseID && $0.teacherID == user.id }) else { throw BackendError.fileUnavailable }
         return try await cache.open(file) { try store.fetch(file.id) }
+    }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw BackendError.blankTitle }
+        guard let index = store.files.firstIndex(where: { $0.id == id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: store.files[index])
+        let old = store.files[index]
+        store.files[index] = CourseFile(id: old.id, courseID: old.courseID, kind: old.kind, title: title, storagePath: old.storagePath, fileType: old.fileType, size: old.size, uploadedAt: old.uploadedAt)
+        return store.files[index]
+    }
+    func deleteFile(_ file: CourseFile) async throws {
+        guard let stored = store.files.first(where: { $0.id == file.id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: stored)
+        store.files.removeAll { $0.id == file.id }
+        cache.remove(file)
+    }
+    private func requireOwner(of file: CourseFile) throws {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == file.courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
     }
 }

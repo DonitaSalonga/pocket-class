@@ -69,6 +69,23 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func download(file: CourseFile) async throws -> URL {
         try await cache.open(file) { try await client.storage.from("course-files").download(path: file.storagePath) }
     }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw BackendError.blankTitle }
+        // RLS hides rows the caller does not own, so an unauthorized update matches zero rows instead of failing.
+        let rows: [CourseFile] = try await client.from("course_files").update(["title": title]).eq("id", value: id.uuidString).select().execute().value
+        guard let file = rows.first else { throw BackendError.fileNotFound }
+        return file
+    }
+    /// Object first, then row. If the object removal fails nothing changed and the file stays listed, so the Teacher can retry.
+    /// If the row delete fails after the object is gone, the row stays listed with no object; retrying removes the row, because removing a missing object is not an error.
+    /// Removing the row first would risk the opposite: an orphaned object that nothing lists and nobody can delete.
+    func deleteFile(_ file: CourseFile) async throws {
+        _ = try await client.storage.from("course-files").remove(paths: [file.storagePath])
+        let rows: [CourseFile] = try await client.from("course_files").delete().eq("id", value: file.id.uuidString).select().execute().value
+        guard !rows.isEmpty else { throw BackendError.fileNotFound }
+        cache.remove(file)
+    }
     private static func mimeType(_ ext: String) -> String {
         switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }
     }

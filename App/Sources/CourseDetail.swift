@@ -23,6 +23,7 @@ struct CourseDetail: View {
     let teacher: Bool
     let backend: any Backend
     let onUploaded: (CourseFile) -> Void
+    var onChanged: () -> Void = {}
     @State var kind: CourseFileKind = .presentation
     @State private var files: [CourseFile] = []
     @State private var copied = false
@@ -31,6 +32,9 @@ struct CourseDetail: View {
     @State private var importError: String?
     @State private var opening: UUID?
     @State private var preview: PreviewItem?
+    @State private var renaming: CourseFile?
+    @State private var deleting: CourseFile?
+    @State private var manageError: String?
 
     private static let pickerTypes = (["pptx", "ppt", "key", "docx"].compactMap { UTType(filenameExtension: $0) }) + [.pdf]
     private var visible: [CourseFile] { files.filter { $0.kind == kind } }
@@ -46,8 +50,9 @@ struct CourseDetail: View {
                 HStack(spacing: 10) { chip("Presentations", .presentation); chip("Exercises", .exercise) }
                 if teacher { Button("Upload") { importing = true }.buttonStyle(PrimaryButton()).accessibilityIdentifier("uploadButton") }
                 if let importError { Text(importError).font(.footnote).foregroundStyle(.red) }
+                if let manageError { Text(manageError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("manageError") }
                 if visible.isEmpty { Text(kind == .presentation ? "No presentations yet." : "No exercises yet.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 20) }
-                else { VStack(spacing: 10) { ForEach(visible) { file in FileRow(file: file, opening: opening == file.id) { open(file) } } } }
+                else { VStack(spacing: 10) { ForEach(visible) { file in FileRow(file: file, opening: opening == file.id, onOpen: { open(file) }, onRename: teacher ? { renaming = file } : nil, onDelete: teacher ? { deleting = file } : nil) } } }
             }.padding(24)
         }
         .frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas)
@@ -57,6 +62,10 @@ struct CourseDetail: View {
             // Screenshot hook: `-debugOpenFile pdf|pptx` previews the first file of that type.
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-debugOpenFile"), args.indices.contains(i + 1), let file = files.first(where: { $0.fileType == args[i + 1] }) { kind = file.kind; open(file) }
+            // Screenshot hook: `-debugManage rename|delete` opens that action for the first file.
+            if let i = args.firstIndex(of: "-debugManage"), args.indices.contains(i + 1), let first = visible.first {
+                if args[i + 1] == "rename" { renaming = first } else { deleting = first }
+            }
             #endif
         }
         .sheet(item: $preview) { FilePreview(item: $0) }
@@ -65,6 +74,18 @@ struct CourseDetail: View {
             case .success(let url): importError = nil; picked = PickedFile(url: url)
             case .failure: importError = "Could not open that file."
             }
+        }
+        .sheet(item: $renaming) { file in
+            RenameSheet(form: RenameFileForm(file: file), backend: backend) { renamed in
+                if let index = files.firstIndex(where: { $0.id == renamed.id }) { files[index] = renamed }
+                renaming = nil
+            }
+        }
+        .confirmationDialog("Delete this file?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { file in
+            Button("Delete", role: .destructive) { Task { await delete(file) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { file in
+            Text("“\(file.title)” will be removed for everyone. This cannot be undone.")
         }
         .sheet(item: $picked) { file in
             UploadSheet(course: course, file: file, kind: kind, backend: backend) { uploaded in
@@ -83,6 +104,12 @@ struct CourseDetail: View {
         }
     }
 
+    private func delete(_ file: CourseFile) async {
+        do { try await backend.deleteFile(file); manageError = nil; files.removeAll { $0.id == file.id }; onChanged() }
+        catch let failure as BackendError { manageError = failure.errorDescription }
+        catch { manageError = "Could not delete the file. Check your connection and try again." }
+    }
+
     private func chip(_ title: String, _ value: CourseFileKind) -> some View {
         Button { kind = value } label: {
             Text(title).font(.subheadline.bold()).foregroundStyle(kind == value ? .white : Style.green).padding(.horizontal, 16).padding(.vertical, 10)
@@ -94,24 +121,32 @@ struct CourseDetail: View {
 private struct FileRow: View {
     let file: CourseFile
     let opening: Bool
-    let action: () -> Void
+    let onOpen: () -> Void
+    /// Nil for Students: the "…" menu only exists when the Teacher can manage the file.
+    var onRename: (() -> Void)?
+    var onDelete: (() -> Void)?
     var body: some View {
-        Button(action: action) { row }.buttonStyle(PressableRow())
-            .accessibilityHint("Opens a preview")
-    }
-    private var row: some View {
-        HStack(spacing: 14) {
-            let badge = Self.badge(file.fileType)
-            Text(badge.label).font(.caption.bold()).foregroundStyle(.white).frame(width: 52, height: 44).background(badge.color, in: RoundedRectangle(cornerRadius: 12))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(file.title).font(.headline).lineLimit(2)
-                Text(file.uploadedAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 4) {
+            Button(action: onOpen) {
+                HStack(spacing: 14) {
+                    let badge = Self.badge(file.fileType)
+                    Text(badge.label).font(.caption.bold()).foregroundStyle(.white).frame(width: 52, height: 44).background(badge.color, in: RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(file.title).font(.headline).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(file.uploadedAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if opening { ProgressView() }
+                }.contentShape(Rectangle())
+            }.buttonStyle(PressableRow()).accessibilityHint("Opens a preview")
+            if let onRename, let onDelete {
+                Menu {
+                    Button("Rename", systemImage: "pencil", action: onRename)
+                    Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+                } label: { Image(systemName: "ellipsis").font(.headline).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle()) }
+                .accessibilityLabel("More actions for \(file.title)").accessibilityIdentifier("fileMenu")
             }
-            Spacer()
-            if opening { ProgressView() }
         }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 18)).shadow(color: .black.opacity(0.05), radius: 8, y: 3)
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        .accessibilityElement(children: .combine)
     }
     private static func badge(_ type: String) -> (label: String, color: Color) {
         switch type {
@@ -156,5 +191,27 @@ private struct UploadSheet: View {
                 }
             }
         }.interactiveDismissDisabled(form.isUploading)
+    }
+}
+
+private struct RenameSheet: View {
+    let form: RenameFileForm
+    let backend: any Backend
+    let onRenamed: (CourseFile) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        @Bindable var form = form
+        NavigationStack {
+            Form {
+                Section { TextField("Title", text: $form.title).accessibilityIdentifier("renameTitle") }
+                if let error = form.error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("renameError") } }
+            }
+            .navigationTitle("Rename file").navigationBarTitleDisplayMode(.inline).toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { if let renamed = await form.submit(using: backend) { onRenamed(renamed) } } }.disabled(form.isSaving)
+                }
+            }
+        }.presentationDetents([.medium])
     }
 }

@@ -326,3 +326,37 @@ private struct Membership: Decodable {
     }
     await cleanUp([file], with: teacher.raw)
 }
+
+@Test func teacherRenamesAndDeletesOwnFileIncludingTheStoredObject() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Manage files"), description: nil)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Draft", data: tinyPDF, fileName: "draft.pdf")
+    let renamed = try await teacher.backend.renameFile(id: file.id, title: "  Final  ")
+    #expect(renamed.title == "Final")
+    #expect(try await teacher.backend.files(courseID: course.id).map(\.title) == ["Final"])
+    await #expect(throws: BackendError.blankTitle) { try await teacher.backend.renameFile(id: file.id, title: "  ") }
+    try await teacher.backend.deleteFile(renamed)
+    #expect(try await teacher.backend.files(courseID: course.id).isEmpty)
+    await #expect(throws: (any Error).self, "object still downloadable") { try await teacher.raw.storage.from("course-files").download(path: file.storagePath) }
+}
+
+@Test func otherTeacherAndStudentCannotRenameOrDeleteAndTheDatabaseKeepsOtherColumnsFixed() async throws {
+    struct Patch: Encodable { let kind: String?; let storage_path: String?; let course_id: UUID? }
+    let owner = try await signedIn(.teacherA)
+    let course = try await owner.backend.createCourse(name: unique("Guarded files"), description: nil)
+    let other = try await owner.backend.createCourse(name: unique("Other course"), description: nil)
+    let file = try await owner.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Keep", data: tinyPDF, fileName: "keep.pdf")
+    for account in [PoolAccount.teacherB, .studentA] {
+        let intruder = try await signedIn(account)
+        await #expect(throws: (any Error).self, "\(account) renamed") { try await intruder.backend.renameFile(id: file.id, title: "Hijacked") }
+        await #expect(throws: (any Error).self, "\(account) deleted") { try await intruder.backend.deleteFile(file) }
+    }
+    // The owner cannot change anything but the title, even bypassing the app.
+    for patch in [Patch(kind: "presentation", storage_path: nil, course_id: nil), Patch(kind: nil, storage_path: "\(course.id.uuidString.lowercased())/moved.pdf", course_id: nil), Patch(kind: nil, storage_path: nil, course_id: other.id)] {
+        await #expect(throws: (any Error).self, "owner changed an immutable column") { try await owner.raw.from("course_files").update(patch).eq("id", value: file.id.uuidString).execute() }
+    }
+    let after = try await owner.backend.files(courseID: course.id)
+    #expect(after == [file])
+    #expect(try await owner.raw.storage.from("course-files").download(path: file.storagePath) == tinyPDF)
+    await cleanUp([file], with: owner.raw)
+}
