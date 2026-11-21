@@ -33,7 +33,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
         .sheet(isPresented: $showingJoin) { JoinCourseSheet(backend: backend, debugCode: debugJoinCode) { course in if !coursesList.contains(where: { $0.id == course.id }) { coursesList.insert(course, at: 0) }; showingJoin = false } }
-        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend, onUploaded: { filesList.insert($0, at: 0) }, onLeave: { coursesList.removeAll { $0.id == course.id }; selectedCourse = nil }, onChanged: { Task { filesList = (try? await backend.allFiles()) ?? filesList } }, kind: debugKind) }
+        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend, onUploaded: { filesList.insert($0, at: 0) }, onLeave: { coursesList.removeAll { $0.id == course.id }; selectedCourse = nil }, onDeleted: { coursesList.removeAll { $0.id == course.id }; selectedCourse = nil; Task { coursesList = (try? await backend.myCourses()) ?? coursesList; filesList = (try? await backend.allFiles()) ?? filesList } }, onCodeChanged: { Task { coursesList = (try? await backend.myCourses()) ?? coursesList } }, onChanged: { Task { filesList = (try? await backend.allFiles()) ?? filesList } }, kind: debugKind) }
         .task {
             #if DEBUG
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
