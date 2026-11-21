@@ -73,16 +73,22 @@ protocol Backend: Sendable {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
     func allFiles() async throws -> [CourseFile]
+    /// Changes only the title (trimmed, never blank) and returns the updated file.
+    func renameFile(id: UUID, title: String) async throws -> CourseFile
+    /// Removes the stored object and the row, so the file disappears for everyone.
+    func deleteFile(_ file: CourseFile) async throws
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge, blankTitle, fileNotFound
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller."; case .blankTitle: "Enter a title."; case .fileNotFound: "This file no longer exists, or you cannot change it." } }
 }
 
 extension Backend {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
     func files(courseID: UUID) async throws -> [CourseFile] { [] }
     func allFiles() async throws -> [CourseFile] { [] }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile { throw BackendError.notConfigured }
+    func deleteFile(_ file: CourseFile) async throws { throw BackendError.notConfigured }
 }
 
 actor InMemoryBackend: Backend {
@@ -143,5 +149,22 @@ actor InMemoryBackend: Backend {
         guard let user = currentUser(), user.role == .teacher else { return [] }
         let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
         return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+    }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw BackendError.blankTitle }
+        guard let index = store.files.firstIndex(where: { $0.id == id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: store.files[index])
+        let old = store.files[index]
+        store.files[index] = CourseFile(id: old.id, courseID: old.courseID, kind: old.kind, title: title, storagePath: old.storagePath, fileType: old.fileType, size: old.size, uploadedAt: old.uploadedAt)
+        return store.files[index]
+    }
+    func deleteFile(_ file: CourseFile) async throws {
+        guard let stored = store.files.first(where: { $0.id == file.id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: stored)
+        store.files.removeAll { $0.id == file.id }
+    }
+    private func requireOwner(of file: CourseFile) throws {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == file.courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
     }
 }
