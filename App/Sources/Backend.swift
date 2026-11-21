@@ -14,6 +14,7 @@ struct Course: Codable, Equatable, Identifiable, Sendable {
     let description: String?
     let joinCode: String
     let createdAt: Date
+    enum CodingKeys: String, CodingKey { case id, name, description; case teacherID = "teacher_id"; case joinCode = "join_code"; case createdAt = "created_at" }
 }
 
 protocol Backend: Sendable {

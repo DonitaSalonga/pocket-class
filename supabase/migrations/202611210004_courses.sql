@@ -3,7 +3,7 @@ create table public.courses (
   teacher_id uuid not null default auth.uid() references public.profiles(id) on delete cascade,
   name text not null check (length(trim(name)) > 0),
   description text,
-  join_code text not null unique default upper(substr(encode(gen_random_bytes(6), 'hex'), 1, 6)),
+  join_code text not null unique default upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6)),
   created_at timestamptz not null default now()
 );
 alter table public.courses enable row level security;

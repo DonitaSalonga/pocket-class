@@ -72,3 +72,34 @@ private func account() -> (email: String, password: String) {
     let nextLaunch = backend(storage)
     #expect(try await nextLaunch.currentUser() == before)
 }
+
+@Test func teacherCreatesListsCoursesAndGetsUniqueReadableCodes() async throws {
+    let client = backend()
+    let credentials = account()
+    try await client.signUp(email: credentials.email, password: credentials.password, name: "Course Teacher", role: .teacher)
+    let first = try await client.createCourse(name: "Biology", description: nil)
+    let second = try await client.createCourse(name: "Chemistry", description: "Lab")
+    let courses = try await client.myCourses()
+    #expect(courses.contains(first) && courses.contains(second))
+    #expect(first.joinCode.count == 6 && first.joinCode.allSatisfy { "0123456789ABCDEF".contains($0) })
+    #expect(first.joinCode != second.joinCode)
+}
+
+@Test func studentCannotCreateCourse() async throws {
+    let client = backend()
+    let credentials = account()
+    try await client.signUp(email: credentials.email, password: credentials.password, name: "Course Student", role: .student)
+    await #expect(throws: (any Error).self) { try await client.createCourse(name: "Biology", description: nil) }
+}
+
+@Test func teachersCannotReadEachOthersCourses() async throws {
+    let teacherA = backend()
+    let first = account()
+    try await teacherA.signUp(email: first.email, password: first.password, name: "Teacher A", role: .teacher)
+    _ = try await teacherA.createCourse(name: "Private Biology", description: nil)
+    try await teacherA.signOut()
+    let teacherB = backend()
+    let second = account()
+    try await teacherB.signUp(email: second.email, password: second.password, name: "Teacher B", role: .teacher)
+    #expect(try await teacherB.myCourses().isEmpty)
+}
