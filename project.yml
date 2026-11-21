@@ -11,7 +11,8 @@ targets:
   Project2:
     type: application
     platform: iOS
-    sources: [App/Sources]
+    # DebugSamples are two tiny real files used by the DEBUG `-debugUploadSamples` launch argument.
+    sources: [App/Sources, App/DebugSamples]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

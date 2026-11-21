@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0F53FBD8D1C2C5C0F119A0C5 /* TestAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB41944E31F9D70562F5A40 /* TestAccounts.swift */; };
+		28734BA1B99EBD30F63BE800 /* sample.pptx in Resources */ = {isa = PBXBuildFile; fileRef = A4B7A088B60E66FBCB19F7F5 /* sample.pptx */; };
+		32E068E94D81C493F1C545A1 /* CourseDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB13B25F40DFA38650E09FC /* CourseDetail.swift */; };
 		35679487DBD1DB705BD119D3 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C8474F8F14772198705A82 /* SupabaseConfig.swift */; };
 		44E5E1DADCEF7898A81EEC80 /* AuthBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */; };
 		52E6841CDC67EF9DEBD3A64C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 04CBB9BBDD08803B2015349A /* Supabase */; };
@@ -18,6 +20,7 @@
 		8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */; };
 		8D853C1ACDA77388D1485503 /* UploadFileForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA997659C4F383A1E1800BC /* UploadFileForm.swift */; };
 		9C192556193ABF75930F973A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 746C74198CFBB1D3F5B6394D /* Supabase */; };
+		E2BDA113FCC2B01066F01D61 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 9B4FF36BE6467A645FED45D6 /* sample.pdf */; };
 		F09C99FAC5840E3272577282 /* CourseFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */; };
 		F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D69FB99F0A53017602551CD /* Backend.swift */; };
 /* End PBXBuildFile section */
@@ -50,7 +53,10 @@
 		796F8D81D722A17930EC7A83 /* Project2Tests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseFileTests.swift; sourceTree = "<group>"; };
 		8AA997659C4F383A1E1800BC /* UploadFileForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadFileForm.swift; sourceTree = "<group>"; };
+		9B4FF36BE6467A645FED45D6 /* sample.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = sample.pdf; sourceTree = "<group>"; };
+		A4B7A088B60E66FBCB19F7F5 /* sample.pptx */ = {isa = PBXFileReference; path = sample.pptx; sourceTree = "<group>"; };
 		B7C8474F8F14772198705A82 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
+		BFB13B25F40DFA38650E09FC /* CourseDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDetail.swift; sourceTree = "<group>"; };
 		CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseBackend.swift; sourceTree = "<group>"; };
 		FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -86,6 +92,7 @@
 		02563AFCCD6D51B507DC7D40 = {
 			isa = PBXGroup;
 			children = (
+				19D9029EB1BCF75F47892D59 /* DebugSamples */,
 				DA7D48EB3D6496483A49A7E8 /* IntegrationTests */,
 				FBA80505C50FB977700D834E /* Sources */,
 				19613E1FCBFF57E3E3BF000F /* Tests */,
@@ -103,6 +110,16 @@
 			path = App/Tests;
 			sourceTree = "<group>";
 		};
+		19D9029EB1BCF75F47892D59 /* DebugSamples */ = {
+			isa = PBXGroup;
+			children = (
+				9B4FF36BE6467A645FED45D6 /* sample.pdf */,
+				A4B7A088B60E66FBCB19F7F5 /* sample.pptx */,
+			);
+			name = DebugSamples;
+			path = App/DebugSamples;
+			sourceTree = "<group>";
+		};
 		DA7D48EB3D6496483A49A7E8 /* IntegrationTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -118,6 +135,7 @@
 			children = (
 				65F44387C86DF0C0B4EBC66B /* App.swift */,
 				2D69FB99F0A53017602551CD /* Backend.swift */,
+				BFB13B25F40DFA38650E09FC /* CourseDetail.swift */,
 				1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */,
 				CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */,
 				B7C8474F8F14772198705A82 /* SupabaseConfig.swift */,
@@ -185,6 +203,7 @@
 			buildConfigurationList = 2DFCB001F562F5FEA1181628 /* Build configuration list for PBXNativeTarget "Project2" */;
 			buildPhases = (
 				FCEAD772A78A34B76B43675D /* Sources */,
+				13B15D67A42078DB5E2E25C9 /* Resources */,
 				7FAD703A89A3D2F4146CEDBF /* Frameworks */,
 			);
 			buildRules = (
@@ -234,6 +253,18 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		13B15D67A42078DB5E2E25C9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E2BDA113FCC2B01066F01D61 /* sample.pdf in Resources */,
+				28734BA1B99EBD30F63BE800 /* sample.pptx in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		40838FD97620F95499410471 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -259,6 +290,7 @@
 			files = (
 				6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */,
 				F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */,
+				32E068E94D81C493F1C545A1 /* CourseDetail.swift in Sources */,
 				8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */,
 				7441362B37513B4A85315530 /* SupabaseBackend.swift in Sources */,
 				35679487DBD1DB705BD119D3 /* SupabaseConfig.swift in Sources */,
