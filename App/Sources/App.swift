@@ -42,13 +42,14 @@ private struct RootView: View {
                 try? await backend.signIn(email: email, password: password)
                 tab = value("-debugTab") == "profile" ? 1 : 0
             }
-            // `-debugSeedCourses A,B` creates Courses for the signed-in Teacher; `-debugOpenCourse` opens the first one.
+            // `-debugSeedCourses A,B` creates Courses for the signed-in Teacher; `-debugOpenCourse [name]` opens the first one or the named one.
             if let seed = value("-debugSeedCourses") { for name in seed.split(separator: ",") { _ = try? await backend.createCourse(name: String(name), description: nil) } }
             #endif
             user = try? await backend.currentUser()
             coursesList = (try? await backend.myCourses()) ?? []
             #if DEBUG
-            if arguments.contains("-debugOpenCourse") { selectedCourse = coursesList.first }
+            // An optional name after the flag picks that Course; shared pool Teachers collect Courses from other tests.
+            if arguments.contains("-debugOpenCourse") { selectedCourse = value("-debugOpenCourse").flatMap { name in coursesList.first { $0.name == name } } ?? coursesList.first }
             if debugJoinCode != nil { showingJoin = true }
             #endif
         }
@@ -204,6 +205,15 @@ private struct NewCourseSheet: View {
     } }
 }
 
+/// Screenshot hooks: `-debugOpenRoster` opens the Roster, `-debugConfirmLeave` asks to leave, once a Course is open.
+private func debugFlag(_ flag: String) -> Bool {
+    #if DEBUG
+    ProcessInfo.processInfo.arguments.contains(flag)
+    #else
+    false
+    #endif
+}
+
 /// Screenshot hook: `-debugJoinCode <code>` opens the join sheet with that code typed and submits it.
 private let debugJoinCode: String? = {
     #if DEBUG
@@ -239,8 +249,8 @@ private struct CourseDetail: View {
     let backend: any Backend
     let onLeave: () -> Void
     @State private var copied = false
-    @State private var showingRoster = false
-    @State private var confirmingLeave = false
+    @State private var showingRoster = debugFlag("-debugOpenRoster")
+    @State private var confirmingLeave = debugFlag("-debugConfirmLeave")
     @State private var error: String?
     var body: some View { VStack(alignment: .leading, spacing: 20) {
         Text(course.name).font(.largeTitle.bold())
@@ -270,7 +280,7 @@ private struct RosterView: View {
             Group {
                 if let error { ContentUnavailableView("Roster unavailable", systemImage: "person.2", description: Text(error)) }
                 else if students.isEmpty { ContentUnavailableView("No students yet", systemImage: "person.2") }
-                else { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } }.swipeActions { Button("Remove", role: .destructive) { selected = student } } } }
+                else { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } ; Spacer(); Button("Remove", role: .destructive) { selected = student }.buttonStyle(.borderless) } } }
             }
             .navigationTitle("Roster").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
