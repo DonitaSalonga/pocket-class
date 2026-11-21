@@ -31,7 +31,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
         .sheet(isPresented: $showingJoin) { JoinCourseSheet(backend: backend, debugCode: debugJoinCode) { course in if !coursesList.contains(where: { $0.id == course.id }) { coursesList.insert(course, at: 0) }; showingJoin = false } }
-        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher) }
+        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend) { coursesList.removeAll { $0.id == course.id }; selectedCourse = nil } }
         .task {
             #if DEBUG
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
@@ -236,12 +236,51 @@ private struct JoinCourseSheet: View {
 private struct CourseDetail: View {
     let course: Course
     let teacher: Bool
+    let backend: any Backend
+    let onLeave: () -> Void
     @State private var copied = false
+    @State private var showingRoster = false
+    @State private var confirmingLeave = false
+    @State private var error: String?
     var body: some View { VStack(alignment: .leading, spacing: 20) {
         Text(course.name).font(.largeTitle.bold())
         if teacher { Text("Join Code").font(.headline); HStack { Text(course.joinCode).font(.system(.title, design: .monospaced).bold()); Spacer(); Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = course.joinCode; copied = true }.buttonStyle(.borderedProminent).tint(Style.green) }.padding(18).background(.white, in: RoundedRectangle(cornerRadius: 18)) }
+        if teacher { Button("Roster") { showingRoster = true }.buttonStyle(PrimaryButton()) }
+        else { Button("Leave Course", role: .destructive) { confirmingLeave = true }.buttonStyle(PrimaryButton()) }
+        if let error { Text(error).foregroundStyle(.red).font(.footnote) }
         Spacer()
-    }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas).navigationTitle("Course") }
+    }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas).navigationTitle("Course")
+        .sheet(isPresented: $showingRoster) { RosterView(course: course, backend: backend) }
+        .confirmationDialog("Leave \(course.name)?", isPresented: $confirmingLeave, titleVisibility: .visible) {
+            Button("Leave Course", role: .destructive) { Task { do { try await backend.leaveCourse(courseID: course.id); onLeave() } catch { self.error = error.localizedDescription } } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("You will lose access to this course and its files.") }
+    }
+}
+
+private struct RosterView: View {
+    let course: Course
+    let backend: any Backend
+    @Environment(\.dismiss) private var dismiss
+    @State private var students: [RosterStudent] = []
+    @State private var selected: RosterStudent?
+    @State private var error: String?
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let error { ContentUnavailableView("Roster unavailable", systemImage: "person.2", description: Text(error)) }
+                else if students.isEmpty { ContentUnavailableView("No students yet", systemImage: "person.2") }
+                else { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } }.swipeActions { Button("Remove", role: .destructive) { selected = student } } } }
+            }
+            .navigationTitle("Roster").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .confirmationDialog("Remove \(selected?.name ?? "student")?", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), titleVisibility: .visible) {
+                Button("Remove Student", role: .destructive) { guard let selected else { return }; Task { do { try await backend.removeStudent(courseID: course.id, studentID: selected.studentID); students.removeAll { $0.id == selected.id }; self.selected = nil } catch { self.error = error.localizedDescription } } }
+                Button("Cancel", role: .cancel) { selected = nil }
+            } message: { Text("They will lose access to this course and its files.") }
+            .task { do { students = try await backend.roster(courseID: course.id) } catch { self.error = error.localizedDescription } }
+        }
+    }
 }
 
 private extension View { func fieldStyle() -> some View { padding(16).background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 15)) } }
