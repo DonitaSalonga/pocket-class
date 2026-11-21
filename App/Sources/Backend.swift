@@ -39,6 +39,31 @@ struct RosterStudent: Codable, Equatable, Identifiable, Sendable {
     var id: UUID { studentID }
     enum CodingKeys: String, CodingKey { case studentID = "student_id", name; case joinedAt = "joined_at" }
 }
+enum CourseFileKind: String, Codable, Sendable { case presentation, exercise }
+struct CourseFile: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let courseID: UUID
+    let kind: CourseFileKind
+    let title: String
+    let storagePath: String
+    let fileType: String
+    let size: Int
+    let uploadedAt: Date
+    enum CodingKeys: String, CodingKey { case id, title, size, kind; case courseID = "course_id"; case storagePath = "storage_path"; case fileType = "file_type"; case uploadedAt = "uploaded_at" }
+}
+
+enum CourseFileValidation {
+    /// Lowercase because Postgres renders UUIDs that way and the storage policy compares the first segment as text.
+    static func newStoragePath(courseID: UUID, fileName: String) -> String {
+        "\(courseID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(URL(fileURLWithPath: fileName).pathExtension.lowercased())"
+    }
+    static func validate(kind: CourseFileKind, fileName: String, size: Int) throws {
+        let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        let allowed = kind == .presentation ? ["pptx", "ppt", "key", "pdf"] : ["pdf", "docx", "pptx"]
+        guard allowed.contains(ext) else { throw BackendError.unsupportedFileType }
+        guard size <= 50 * 1024 * 1024 else { throw BackendError.fileTooLarge }
+    }
+}
 
 protocol Backend: Sendable {
     func signUp(email: String, password: String, name: String, role: UserRole) async throws
@@ -55,15 +80,24 @@ protocol Backend: Sendable {
     func roster(courseID: UUID) async throws -> [RosterStudent]
     func removeStudent(courseID: UUID, studentID: UUID) async throws
     func leaveCourse(courseID: UUID) async throws
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
+    func files(courseID: UUID) async throws -> [CourseFile]
+    func allFiles() async throws -> [CourseFile]
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
+}
+
+extension Backend {
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
+    func files(courseID: UUID) async throws -> [CourseFile] { [] }
+    func allFiles() async throws -> [CourseFile] { [] }
 }
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: [String: Date] = [:] }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: [String: Date] = [:]; fileprivate var files: [CourseFile] = [] }
     private let store: Store
     init(store: Store = Store()) { self.store = store }
 
@@ -120,5 +154,20 @@ actor InMemoryBackend: Backend {
     func leaveCourse(courseID: UUID) throws {
         guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
         store.memberships["\(user.id):\(courseID)"] = nil
+}
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
+        try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        let file = CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: CourseFileValidation.newStoragePath(courseID: courseID, fileName: fileName), fileType: URL(fileURLWithPath: fileName).pathExtension.lowercased(), size: data.count, uploadedAt: .now)
+        store.files.append(file); return file
+    }
+    func files(courseID: UUID) async throws -> [CourseFile] {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+    }
+    func allFiles() async throws -> [CourseFile] {
+        guard let user = currentUser(), user.role == .teacher else { return [] }
+        let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
+        return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
     }
 }

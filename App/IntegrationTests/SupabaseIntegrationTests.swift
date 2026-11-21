@@ -95,10 +95,11 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
 
 @Test func studentCannotCreateCourse() async throws {
     let student = try await signedIn(.studentA)
-    await #expect(throws: (any Error).self) { try await student.backend.createCourse(name: "Biology", description: nil) }
-    let raw = student.raw
-    let rows: [Course] = try await raw.from("courses").select().execute().value
-    #expect(rows.isEmpty)
+    let name = unique("Student attempt")
+    await #expect(throws: (any Error).self) { try await student.backend.createCourse(name: name, description: nil) }
+    // Pool Students sit on Rosters, so their list is not empty; it just must not contain the refused Course.
+    let rows: [Course] = try await student.raw.from("courses").select().execute().value
+    #expect(rows.contains { $0.name == name } == false)
 }
 
 @Test func teachersCannotReadEachOthersCourses() async throws {
@@ -118,6 +119,7 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
     let course = try await teacher.backend.createCourse(name: unique("Biology"), description: nil)
     let student = try await signedIn(.studentB)
     let studentRaw = student.raw
+    // Pool Students sit on other Rosters, so the list is not empty; it just must not hold a Course they did not join.
     let seenByStudent: [Course] = try await studentRaw.from("courses").select().execute().value
     #expect(seenByStudent.contains { $0.id == course.id } == false)
     let anon = try await rawClient()
@@ -148,6 +150,103 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
 
 @Test func resetPasswordAcceptsUnknownWellFormedEmail() async throws {
     try await backend().resetPassword(email: "reset+\(UUID().uuidString.lowercased())@example.com")
+}
+
+// MARK: Course files
+
+/// Smallest PDF that still parses: one empty page.
+private let tinyPDF = Data("%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 72 72]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n".utf8)
+/// Not a real deck: the bucket checks the MIME type and size, not the contents.
+private let pptxBlob = Data("PK-fake-pptx-bytes".utf8)
+
+/// Removes uploaded rows and objects so the shared bucket stays empty between runs.
+private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
+    for file in files { _ = try? await raw.from("course_files").delete().eq("id", value: file.id.uuidString).execute() }
+    _ = try? await raw.storage.from("course-files").remove(paths: files.map(\.storagePath))
+}
+
+@Test func teacherUploadsRealFilesAndListsThemNewestFirst() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Uploads"), description: nil)
+    let pdf = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Worksheet", data: tinyPDF, fileName: "worksheet.pdf")
+    try await Task.sleep(for: .milliseconds(1100))
+    let deck = try await teacher.backend.uploadFile(courseID: course.id, kind: .presentation, title: "Deck", data: pptxBlob, fileName: "deck.pptx")
+    let listed = try await teacher.backend.files(courseID: course.id)
+    #expect(listed.map(\.id) == [deck.id, pdf.id])
+    #expect(listed.map(\.kind) == [.presentation, .exercise])
+    #expect(listed.map(\.fileType) == ["pptx", "pdf"])
+    #expect(listed.map(\.size) == [pptxBlob.count, tinyPDF.count])
+    #expect(pdf.storagePath.hasPrefix(course.id.uuidString.lowercased() + "/"))
+    #expect(try await teacher.raw.storage.from("course-files").download(path: pdf.storagePath) == tinyPDF)
+    #expect(try await teacher.backend.allFiles().filter { $0.courseID == course.id }.count == 2)
+    await cleanUp(listed, with: teacher.raw)
+}
+
+@Test func otherTeacherStudentAndOutsiderCannotUploadReadOrListCourseFiles() async throws {
+    struct NewFile: Encodable { let course_id: UUID; let kind: String; let title: String; let storage_path: String; let file_type: String; let size: Int }
+    let owner = try await signedIn(.teacherA)
+    let course = try await owner.backend.createCourse(name: unique("Private files"), description: nil)
+    let file = try await owner.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Secret", data: tinyPDF, fileName: "secret.pdf")
+    for account in [PoolAccount.teacherB, .studentA, .outsider] {
+        let raw = try await signedIn(account).raw
+        let bucket = raw.storage.from("course-files")
+        let path = "\(course.id.uuidString.lowercased())/\(UUID().uuidString.lowercased()).pdf"
+        await #expect(throws: (any Error).self, "\(account) uploaded an object") { try await bucket.upload(path, data: tinyPDF, options: .init(contentType: "application/pdf")) }
+        await #expect(throws: (any Error).self, "\(account) inserted a row") {
+            try await raw.from("course_files").insert(NewFile(course_id: course.id, kind: "exercise", title: "Forged", storage_path: path, file_type: "pdf", size: 1)).execute()
+        }
+        let rows: [CourseFile] = try await raw.from("course_files").select().eq("course_id", value: course.id.uuidString).execute().value
+        #expect(rows.isEmpty, "\(account) listed rows")
+        await #expect(throws: (any Error).self, "\(account) downloaded an object") { try await bucket.download(path: file.storagePath) }
+        let objects = try await bucket.list(path: course.id.uuidString.lowercased())
+        #expect(objects.isEmpty, "\(account) listed objects")
+        _ = try? await raw.from("course_files").delete().eq("id", value: file.id.uuidString).execute()
+        _ = try? await bucket.remove(paths: [file.storagePath])
+    }
+    let anon = try await rawClient()
+    let anonRows: [CourseFile] = (try? await anon.from("course_files").select().execute().value) ?? []
+    #expect(anonRows.isEmpty)
+    await #expect(throws: (any Error).self) { try await anon.storage.from("course-files").download(path: file.storagePath) }
+    // Nothing above may have changed the owner's data.
+    #expect(try await owner.backend.files(courseID: course.id).map(\.id) == [file.id])
+    #expect(try await owner.raw.storage.from("course-files").download(path: file.storagePath) == tinyPDF)
+    await cleanUp([file], with: owner.raw)
+}
+
+@Test func bucketRefusesOversizeAndWrongTypeEvenWhenAppChecksAreBypassed() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Bucket limits"), description: nil)
+    let bucket = teacher.raw.storage.from("course-files")
+    let tooBig = "\(course.id.uuidString.lowercased())/\(UUID().uuidString).pdf"
+    await #expect(throws: (any Error).self, "oversize upload accepted") { try await bucket.upload(tooBig, data: Data(count: 50 * 1024 * 1024 + 1), options: .init(contentType: "application/pdf")) }
+    let wrongType = "\(course.id.uuidString.lowercased())/\(UUID().uuidString).txt"
+    await #expect(throws: (any Error).self, "text/plain upload accepted") { try await bucket.upload(wrongType, data: Data("hi".utf8), options: .init(contentType: "text/plain")) }
+    _ = try? await bucket.remove(paths: [tooBig, wrongType])
+    // Files outside the bucket's Course folders cannot be written either.
+    let stray = "\(UUID().uuidString)/\(UUID().uuidString).pdf"
+    await #expect(throws: (any Error).self, "upload outside any own Course folder accepted") { try await bucket.upload(stray, data: tinyPDF, options: .init(contentType: "application/pdf")) }
+}
+
+@Test func databaseRefusesMalformedFileRows() async throws {
+    struct NewFile: Encodable { let course_id: UUID; let kind: String; let title: String; let storage_path: String; let file_type: String; let size: Int }
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Row checks"), description: nil)
+    func insert(kind: String = "exercise", title: String = "Ok", folder: UUID? = nil, type: String = "pdf", size: Int = 1) async -> Bool {
+        let path = "\((folder ?? course.id).uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(type)"
+        do { try await teacher.raw.from("course_files").insert(NewFile(course_id: course.id, kind: kind, title: title, storage_path: path, file_type: type, size: size)).execute(); return true }
+        catch { return false }
+    }
+    #expect(await insert(title: "   ") == false)
+    #expect(await insert(kind: "homework") == false)
+    #expect(await insert(kind: "presentation", type: "docx") == false)
+    #expect(await insert(kind: "exercise", type: "key") == false)
+    #expect(await insert(type: "exe") == false)
+    #expect(await insert(folder: UUID()) == false)
+    #expect(await insert(size: 50 * 1024 * 1024 + 1) == false)
+    #expect(await insert() == true)
+    let rows: [CourseFile] = try await teacher.raw.from("course_files").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(rows.count == 1)
+    await cleanUp(rows, with: teacher.raw)
 }
 
 @Test func studentJoinsCourseWithCodeAndSeesIt() async throws {
