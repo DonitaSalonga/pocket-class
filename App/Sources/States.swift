@@ -31,3 +31,10 @@ struct LoadingView: View {
         VStack(spacing: 12) { ProgressView().tint(Style.green); Text(label).font(.subheadline).foregroundStyle(.secondary) }.frame(maxWidth: .infinity).padding(.vertical, 30).accessibilityElement(children: .combine)
     }
 }
+
+struct OfflineBanner: View {
+    let text: String
+    var body: some View {
+        Label(text, systemImage: "wifi.slash").font(.footnote.bold()).foregroundStyle(Style.green).padding(.horizontal, 14).padding(.vertical, 9).frame(maxWidth: .infinity, alignment: .leading).background(Style.green.opacity(0.1), in: Capsule())
+    }
+}

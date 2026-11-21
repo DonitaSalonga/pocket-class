@@ -15,6 +15,7 @@ private struct RootView: View {
     @State private var tab = 0
     @State private var coursesList: [Course] = []
     @State private var coursesState: LoadState = .loading
+    @State private var coursesOffline = false
     @State private var signingOut = false
     @State private var showingNewCourse = false
     @State private var showingJoin = false
@@ -60,7 +61,8 @@ private struct RootView: View {
                 }
             }
             #endif
-            filesList = (try? await backend.allFiles()) ?? []
+            if let all = try? await backend.allFiles() { filesList = all }
+            else { filesList = []; for course in coursesList { filesList += await backend.cachedFiles(courseID: course.id) ?? [] } }
             #if DEBUG
             if value("-debugChip") == "exercises" { debugKind = .exercise }
             // An optional name after the flag picks that Course; shared pool Teachers collect Courses from other tests.
@@ -77,6 +79,7 @@ private struct RootView: View {
                 avatar(user, size: 48)
             }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
+            if coursesOffline { OfflineBanner(text: "Offline: showing saved courses") }
             if coursesState == .loading && coursesList.isEmpty { Spacer(); LoadingView(label: "Loading courses…"); Spacer() }
             else if coursesState == .failed && coursesList.isEmpty { Spacer(); StatusView(icon: "wifi.slash", title: "Could not load courses", detail: "Check your connection and try again.") { Task { await loadCourses() } }; Spacer() }
             else if coursesList.isEmpty { Spacer(); StatusView(icon: "books.vertical", title: user.role == .teacher ? "No courses yet" : "No courses joined", detail: user.role == .teacher ? "Tap + New Course to make your first one." : "Tap Join with code and enter the code from your Teacher."); Spacer() }
@@ -85,8 +88,12 @@ private struct RootView: View {
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
     private func loadCourses() async {
-        do { coursesList = try await backend.myCourses(); coursesState = .loaded }
-        catch { coursesState = .failed }
+        do { coursesList = try await backend.myCourses(); coursesState = .loaded; coursesOffline = false }
+        catch {
+            // Offline: show the last known Courses instead of an error.
+            if let saved = await backend.cachedCourses() { coursesList = saved; coursesOffline = true; coursesState = .loaded }
+            else { coursesState = .failed }
+        }
     }
     private func profile(_ user: AppUser) -> some View {
         VStack(spacing: 16) {
