@@ -86,6 +86,7 @@ struct FileCache: Sendable {
         let title = file.title.replacingOccurrences(of: "/", with: "-")
         return directory.appendingPathComponent(file.id.uuidString).appendingPathComponent("\(title).\(file.fileType)")
     }
+    func clear() { try? FileManager.default.removeItem(at: directory) }
     /// Cached copy if present, else `fetch` and keep it. A fetch failure with no copy propagates.
     func open(_ file: CourseFile, fetch: () async throws -> Data) async throws -> URL {
         let url = url(for: file)

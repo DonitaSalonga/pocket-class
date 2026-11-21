@@ -13,7 +13,7 @@ final class MemoryStorage: AuthLocalStorage, @unchecked Sendable {
 }
 
 func backend(_ storage: MemoryStorage = MemoryStorage()) -> SupabaseBackend {
-    SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey, storage: storage)
+    SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey, storage: storage, cache: FileCache(directory: FileManager.default.temporaryDirectory.appendingPathComponent("cache-\(UUID())")))
 }
 
 private func account() -> (email: String, password: String) {
@@ -304,4 +304,25 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
 private struct Membership: Decodable {
     let courseID: UUID
     enum CodingKeys: String, CodingKey { case courseID = "course_id" }
+}
+
+@Test func rosterStudentListsAndDownloadsFilesButOtherStudentAndOutsiderCannot() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster files"), description: nil)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Handout", data: tinyPDF, fileName: "handout.pdf")
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    #expect(try await student.backend.files(courseID: course.id).map(\.id) == [file.id])
+    let local = try await student.backend.download(file: file)
+    #expect(try Data(contentsOf: local) == tinyPDF)
+    // A Roster Student can read but not write.
+    await #expect(throws: (any Error).self) { try await student.raw.storage.from("course-files").remove(paths: [file.storagePath]).isEmpty ? { throw CocoaError(.fileNoSuchFile) }() : () }
+    _ = try? await student.raw.from("course_files").delete().eq("id", value: file.id.uuidString).execute()
+    #expect(try await teacher.backend.files(courseID: course.id).map(\.id) == [file.id])
+    for account in [PoolAccount.studentB, .outsider] {
+        let other = try await signedIn(account)
+        #expect(try await other.backend.files(courseID: course.id).isEmpty, "\(account) listed files")
+        await #expect(throws: (any Error).self, "\(account) downloaded") { try await other.backend.download(file: file) }
+    }
+    await cleanUp([file], with: teacher.raw)
 }
