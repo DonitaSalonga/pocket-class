@@ -32,6 +32,27 @@ struct Course: Codable, Equatable, Identifiable, Sendable {
     let createdAt: Date
     enum CodingKeys: String, CodingKey { case id, name, description; case teacherID = "teacher_id"; case joinCode = "join_code"; case createdAt = "created_at" }
 }
+enum CourseFileKind: String, Codable, Sendable { case presentation, exercise }
+struct CourseFile: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let courseID: UUID
+    let kind: CourseFileKind
+    let title: String
+    let storagePath: String
+    let fileType: String
+    let size: Int
+    let uploadedAt: Date
+    enum CodingKeys: String, CodingKey { case id, title, size, kind; case courseID = "course_id"; case storagePath = "storage_path"; case fileType = "file_type"; case uploadedAt = "uploaded_at" }
+}
+
+enum CourseFileValidation {
+    static func validate(kind: CourseFileKind, fileName: String, size: Int) throws {
+        let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        let allowed = kind == .presentation ? ["pptx", "ppt", "key", "pdf"] : ["pdf", "docx", "pptx"]
+        guard allowed.contains(ext) else { throw BackendError.unsupportedFileType }
+        guard size <= 50 * 1024 * 1024 else { throw BackendError.fileTooLarge }
+    }
+}
 
 protocol Backend: Sendable {
     func signUp(email: String, password: String, name: String, role: UserRole) async throws
@@ -44,15 +65,22 @@ protocol Backend: Sendable {
     func profile(id: UUID) async throws -> AppUser?
     func createCourse(name: String, description: String?) async throws -> Course
     func myCourses() async throws -> [Course]
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
+    func files(courseID: UUID) async throws -> [CourseFile]
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, unsupportedFileType, fileTooLarge
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
+}
+
+extension Backend {
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
+    func files(courseID: UUID) async throws -> [CourseFile] { [] }
 }
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = [] }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var files: [CourseFile] = [] }
     private let store: Store
     init(store: Store = Store()) { self.store = store }
 
@@ -83,4 +111,14 @@ actor InMemoryBackend: Backend {
         return course
     }
     func myCourses() -> [Course] { guard let user = currentUser(), user.role == .teacher else { return [] }; return store.courses.filter { $0.teacherID == user.id } }
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
+        try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        let file = CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: "\(courseID)/\(UUID().uuidString).\(URL(fileURLWithPath: fileName).pathExtension.lowercased())", fileType: URL(fileURLWithPath: fileName).pathExtension.lowercased(), size: data.count, uploadedAt: .now)
+        store.files.append(file); return file
+    }
+    func files(courseID: UUID) async throws -> [CourseFile] {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+        return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+    }
 }
