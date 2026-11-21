@@ -28,10 +28,7 @@ private struct RootView: View {
                 }.background(Style.canvas.ignoresSafeArea())
             } else { AuthView(backend: backend) { user = $0 } }
         }
-        .sheet(isPresented: $showingNewCourse) { NewCourseSheet { name, description in
-            do { let course = try await backend.createCourse(name: name, description: description); coursesList.insert(course, at: 0); showingNewCourse = false }
-            catch { }
-        } }
+        .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
         .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher) }
         .task {
             #if DEBUG
@@ -42,9 +39,14 @@ private struct RootView: View {
                 try? await backend.signIn(email: email, password: password)
                 tab = value("-debugTab") == "profile" ? 1 : 0
             }
+            // `-debugSeedCourses A,B` creates Courses for the signed-in Teacher; `-debugOpenCourse` opens the first one.
+            if let seed = value("-debugSeedCourses") { for name in seed.split(separator: ",") { _ = try? await backend.createCourse(name: String(name), description: nil) } }
             #endif
             user = try? await backend.currentUser()
             coursesList = (try? await backend.myCourses()) ?? []
+            #if DEBUG
+            if arguments.contains("-debugOpenCourse") { selectedCourse = coursesList.first }
+            #endif
         }
     }
     private func courses(_ user: AppUser) -> some View {
@@ -136,14 +138,17 @@ private struct CourseCard: View {
 }
 
 private struct NewCourseSheet: View {
-    let create: (String, String?) async -> Void
+    let backend: any Backend
+    let onCreated: (Course) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var description = ""
-    var body: some View { NavigationStack { Form { TextField("Course name", text: $name); TextField("Description (optional)", text: $description) }
+    @State private var form = NewCourseForm()
+    var body: some View { NavigationStack { Form {
+            Section { TextField("Course name", text: $form.name); TextField("Description (optional)", text: $form.description) }
+            if let error = form.error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("newCourseError") } }
+        }
         .navigationTitle("New Course").navigationBarTitleDisplayMode(.inline).toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { await create(name, description.isEmpty ? nil : description) } }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty) }
+            ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { if let course = await form.submit(using: backend) { onCreated(course) } } } }
         }
     } }
 }

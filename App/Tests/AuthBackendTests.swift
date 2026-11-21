@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Project2
 
@@ -14,7 +15,7 @@ import Testing
 @Test func studentCannotCreateCourseAndCannotListCourses() async throws {
     let backend = InMemoryBackend()
     try await backend.signUp(email: "student@example.com", password: "correct horse", name: "Mia Chen", role: .student)
-    await #expect(throws: BackendError.invalidCredentials) { try await backend.createCourse(name: "Biology", description: nil) }
+    await #expect(throws: BackendError.notATeacher) { try await backend.createCourse(name: "Biology", description: nil) }
     #expect(await backend.myCourses().isEmpty)
 }
 
@@ -70,4 +71,53 @@ import Testing
     try await backend.signOut()
     try await backend.signIn(email: "teacher@example.com", password: "correct horse")
     #expect(try await backend.currentUser()?.name == "Jordan Lee")
+}
+
+private actor FailingBackend: Backend {
+    func signUp(email: String, password: String, name: String, role: UserRole) throws {}
+    func signIn(email: String, password: String) throws {}
+    func signOut() throws {}
+    func currentUser() throws -> AppUser? { nil }
+    func currentUserID() throws -> UUID? { nil }
+    func resetPassword(email: String) throws {}
+    func updateRole(_ role: UserRole) throws {}
+    func profile(id: UUID) throws -> AppUser? { nil }
+    func createCourse(name: String, description: String?) throws -> Course { throw URLError(.notConnectedToInternet) }
+    func myCourses() throws -> [Course] { [] }
+}
+
+@MainActor @Test func newCourseWithBlankNameShowsErrorAndCreatesNothing() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
+    let form = NewCourseForm()
+    form.name = "   "
+    #expect(await form.submit(using: backend) == nil)
+    #expect(form.error == "Enter a course name.")
+    #expect(await backend.myCourses().isEmpty)
+}
+
+@MainActor @Test func newCourseTrimsNameAndClearsError() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
+    let form = NewCourseForm()
+    form.error = "old"
+    form.name = "  Biology "
+    #expect(await form.submit(using: backend)?.name == "Biology")
+    #expect(form.error == nil)
+}
+
+@MainActor @Test func newCourseShowsBackendRefusalForStudent() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "student@example.com", password: "correct horse", name: "Mia Chen", role: .student)
+    let form = NewCourseForm()
+    form.name = "Biology"
+    #expect(await form.submit(using: backend) == nil)
+    #expect(form.error == "Only Teachers can create courses.")
+}
+
+@MainActor @Test func newCourseShowsGenericErrorForUnexpectedFailure() async throws {
+    let form = NewCourseForm()
+    form.name = "Biology"
+    #expect(await form.submit(using: FailingBackend()) == nil)
+    #expect(form.error == "Could not create the course. Check your connection and try again.")
 }

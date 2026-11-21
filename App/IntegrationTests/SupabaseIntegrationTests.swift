@@ -73,6 +73,22 @@ private func account() -> (email: String, password: String) {
     #expect(try await nextLaunch.currentUser() == before)
 }
 
+private let joinCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+/// Talks to the courses table directly so RLS is tested without the app's own role guards.
+private func rawClient(email: String? = nil, password: String? = nil) async throws -> SupabaseClient {
+    let client = SupabaseClient(supabaseURL: SupabaseConfig.url, supabaseKey: SupabaseConfig.anonKey, options: .init(auth: .init(storage: MemoryStorage(), emitLocalSessionAsInitialSession: true)))
+    if let email, let password { try await client.auth.signIn(email: email, password: password) }
+    return client
+}
+
+private func signedUp(_ role: UserRole, name: String) async throws -> (backend: SupabaseBackend, email: String, password: String) {
+    let client = backend()
+    let credentials = account()
+    try await client.signUp(email: credentials.email, password: credentials.password, name: name, role: role)
+    return (client, credentials.email, credentials.password)
+}
+
 @Test func teacherCreatesListsCoursesAndGetsUniqueReadableCodes() async throws {
     let client = backend()
     let credentials = account()
@@ -81,25 +97,59 @@ private func account() -> (email: String, password: String) {
     let second = try await client.createCourse(name: "Chemistry", description: "Lab")
     let courses = try await client.myCourses()
     #expect(courses.contains(first) && courses.contains(second))
-    #expect(first.joinCode.count == 6 && first.joinCode.allSatisfy { "0123456789ABCDEF".contains($0) })
+    #expect(first.joinCode.count == 6 && first.joinCode.allSatisfy { joinCodeAlphabet.contains($0) })
+    #expect(second.joinCode.count == 6 && second.joinCode.allSatisfy { joinCodeAlphabet.contains($0) })
     #expect(first.joinCode != second.joinCode)
 }
 
 @Test func studentCannotCreateCourse() async throws {
-    let client = backend()
-    let credentials = account()
-    try await client.signUp(email: credentials.email, password: credentials.password, name: "Course Student", role: .student)
-    await #expect(throws: (any Error).self) { try await client.createCourse(name: "Biology", description: nil) }
+    let student = try await signedUp(.student, name: "Course Student")
+    await #expect(throws: (any Error).self) { try await student.backend.createCourse(name: "Biology", description: nil) }
+    let raw = try await rawClient(email: student.email, password: student.password)
+    let rows: [Course] = try await raw.from("courses").select().execute().value
+    #expect(rows.isEmpty)
 }
 
 @Test func teachersCannotReadEachOthersCourses() async throws {
-    let teacherA = backend()
-    let first = account()
-    try await teacherA.signUp(email: first.email, password: first.password, name: "Teacher A", role: .teacher)
-    _ = try await teacherA.createCourse(name: "Private Biology", description: nil)
-    try await teacherA.signOut()
-    let teacherB = backend()
-    let second = account()
-    try await teacherB.signUp(email: second.email, password: second.password, name: "Teacher B", role: .teacher)
-    #expect(try await teacherB.myCourses().isEmpty)
+    let a = try await signedUp(.teacher, name: "Teacher A")
+    let course = try await a.backend.createCourse(name: "Private Biology", description: nil)
+    let b = try await signedUp(.teacher, name: "Teacher B")
+    #expect(try await b.backend.myCourses().isEmpty)
+    let raw = try await rawClient(email: b.email, password: b.password)
+    let byID: [Course] = try await raw.from("courses").select().eq("id", value: course.id.uuidString).execute().value
+    let byCode: [Course] = try await raw.from("courses").select().eq("join_code", value: course.joinCode).execute().value
+    #expect(byID.isEmpty && byCode.isEmpty)
+    #expect(try await a.backend.myCourses() == [course])
+}
+
+@Test func studentsAndSignedOutUsersCannotReadCourses() async throws {
+    let teacher = try await signedUp(.teacher, name: "Readable Teacher")
+    _ = try await teacher.backend.createCourse(name: "Biology", description: nil)
+    let student = try await signedUp(.student, name: "Nosy Student")
+    let studentRaw = try await rawClient(email: student.email, password: student.password)
+    let seenByStudent: [Course] = try await studentRaw.from("courses").select().execute().value
+    #expect(seenByStudent.isEmpty)
+    let anon = try await rawClient()
+    let seenByAnon: [Course] = (try? await anon.from("courses").select().execute().value) ?? []
+    #expect(seenByAnon.isEmpty)
+}
+
+@Test func clientCannotForceOwnerOrJoinCode() async throws {
+    struct Forged: Encodable { let name: String; let teacher_id: UUID; let join_code: String }
+    let a = try await signedUp(.teacher, name: "Teacher A")
+    let b = try await signedUp(.teacher, name: "Teacher B")
+    let aID = try #require(await a.backend.currentUserID())
+    let bID = try #require(await b.backend.currentUserID())
+    let raw = try await rawClient(email: b.email, password: b.password)
+    // Either the insert is refused or the server overrides both fields; never may the forged values stick.
+    let forged: Course? = try? await raw.from("courses").insert(Forged(name: "Forged", teacher_id: aID, join_code: "AAAAAA")).select().single().execute().value
+    if let forged { #expect(forged.teacherID == bID && forged.joinCode != "AAAAAA") }
+    #expect(try await a.backend.myCourses().isEmpty)
+    // Join Code is immutable and other Teachers' rows cannot be updated.
+    let own = try await b.backend.createCourse(name: "Own", description: nil)
+    _ = try? await raw.from("courses").update(["join_code": "BBBBBB"]).eq("id", value: own.id.uuidString).execute()
+    #expect(try await b.backend.myCourses().first { $0.id == own.id }?.joinCode == own.joinCode)
+    let theirs = try await a.backend.createCourse(name: "Theirs", description: nil)
+    _ = try? await raw.from("courses").update(["name": "Hijacked"]).eq("id", value: theirs.id.uuidString).execute()
+    #expect(try await a.backend.myCourses() == [theirs])
 }

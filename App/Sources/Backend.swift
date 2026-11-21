@@ -30,8 +30,8 @@ protocol Backend: Sendable {
     func myCourses() async throws -> [Course]
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses." } }
 }
 
 actor InMemoryBackend: Backend {
@@ -58,7 +58,7 @@ actor InMemoryBackend: Backend {
     func updateRole(_ role: UserRole) throws { throw BackendError.roleIsImmutable }
     func profile(id: UUID) -> AppUser? { store.accounts.values.first { $0.user.id == id }?.user }
     func createCourse(name: String, description: String?) throws -> Course {
-        guard let user = currentUser(), user.role == .teacher else { throw BackendError.invalidCredentials }
+        guard let user = currentUser(), user.role == .teacher else { throw BackendError.notATeacher }
         let alphabet = Array("23456789ABCDEFGHJKLMNPQRSTUVWXYZ")
         var code: String
         repeat { code = String((0..<6).map { _ in alphabet.randomElement()! }) } while store.courses.contains { $0.joinCode == code }
