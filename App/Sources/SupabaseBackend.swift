@@ -40,7 +40,7 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
         let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        let path = "\(courseID.uuidString)/\(UUID().uuidString).\(ext)"
+        let path = CourseFileValidation.newStoragePath(courseID: courseID, fileName: fileName)
         try await client.storage.from("course-files").upload(path, data: data, options: .init(contentType: Self.mimeType(ext)))
         struct NewFile: Encodable { let course_id: UUID; let kind: String; let title: String; let storage_path: String; let file_type: String; let size: Int }
         return try await client.from("course_files").insert(NewFile(course_id: courseID, kind: kind.rawValue, title: title, storage_path: path, file_type: ext, size: data.count)).select().single().execute().value

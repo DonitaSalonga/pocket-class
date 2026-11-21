@@ -46,6 +46,10 @@ struct CourseFile: Codable, Equatable, Identifiable, Sendable {
 }
 
 enum CourseFileValidation {
+    /// Lowercase because Postgres renders UUIDs that way and the storage policy compares the first segment as text.
+    static func newStoragePath(courseID: UUID, fileName: String) -> String {
+        "\(courseID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(URL(fileURLWithPath: fileName).pathExtension.lowercased())"
+    }
     static func validate(kind: CourseFileKind, fileName: String, size: Int) throws {
         let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
         let allowed = kind == .presentation ? ["pptx", "ppt", "key", "pdf"] : ["pdf", "docx", "pptx"]
@@ -116,7 +120,7 @@ actor InMemoryBackend: Backend {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
-        let file = CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: "\(courseID)/\(UUID().uuidString).\(URL(fileURLWithPath: fileName).pathExtension.lowercased())", fileType: URL(fileURLWithPath: fileName).pathExtension.lowercased(), size: data.count, uploadedAt: .now)
+        let file = CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: CourseFileValidation.newStoragePath(courseID: courseID, fileName: fileName), fileType: URL(fileURLWithPath: fileName).pathExtension.lowercased(), size: data.count, uploadedAt: .now)
         store.files.append(file); return file
     }
     func files(courseID: UUID) async throws -> [CourseFile] {

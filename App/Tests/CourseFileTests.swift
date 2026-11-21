@@ -102,3 +102,13 @@ private actor UploadSpy: Backend {
     #expect(counts.label(for: science.id) == "2 Presentations · 1 Exercise")
     #expect(counts.label(for: art.id) == "0 Presentations · 0 Exercises")
 }
+
+/// Postgres renders UUIDs in lowercase and the storage policy compares the path's first segment as text.
+@Test func storagePathStartsWithLowercaseCourseID() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "secret", name: "Teacher", role: .teacher)
+    let course = try await backend.createCourse(name: "Science", description: nil)
+    let file = try await backend.uploadFile(courseID: course.id, kind: .exercise, title: "A", data: Data([1]), fileName: "a.PDF")
+    #expect(file.storagePath.hasPrefix(course.id.uuidString.lowercased() + "/"))
+    #expect(file.storagePath.hasSuffix(".pdf"))
+}

@@ -174,7 +174,7 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     #expect(listed.map(\.kind) == [.presentation, .exercise])
     #expect(listed.map(\.fileType) == ["pptx", "pdf"])
     #expect(listed.map(\.size) == [pptxBlob.count, tinyPDF.count])
-    #expect(pdf.storagePath.hasPrefix(course.id.uuidString + "/"))
+    #expect(pdf.storagePath.hasPrefix(course.id.uuidString.lowercased() + "/"))
     #expect(try await teacher.raw.storage.from("course-files").download(path: pdf.storagePath) == tinyPDF)
     #expect(try await teacher.backend.allFiles().filter { $0.courseID == course.id }.count == 2)
     await cleanUp(listed, with: teacher.raw)
@@ -188,7 +188,7 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     for account in [PoolAccount.teacherB, .studentA, .outsider] {
         let raw = try await signedIn(account).raw
         let bucket = raw.storage.from("course-files")
-        let path = "\(course.id.uuidString)/\(UUID().uuidString).pdf"
+        let path = "\(course.id.uuidString.lowercased())/\(UUID().uuidString.lowercased()).pdf"
         await #expect(throws: (any Error).self, "\(account) uploaded an object") { try await bucket.upload(path, data: tinyPDF, options: .init(contentType: "application/pdf")) }
         await #expect(throws: (any Error).self, "\(account) inserted a row") {
             try await raw.from("course_files").insert(NewFile(course_id: course.id, kind: "exercise", title: "Forged", storage_path: path, file_type: "pdf", size: 1)).execute()
@@ -196,7 +196,7 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
         let rows: [CourseFile] = try await raw.from("course_files").select().eq("course_id", value: course.id.uuidString).execute().value
         #expect(rows.isEmpty, "\(account) listed rows")
         await #expect(throws: (any Error).self, "\(account) downloaded an object") { try await bucket.download(path: file.storagePath) }
-        let objects = try await bucket.list(path: course.id.uuidString)
+        let objects = try await bucket.list(path: course.id.uuidString.lowercased())
         #expect(objects.isEmpty, "\(account) listed objects")
         _ = try? await raw.from("course_files").delete().eq("id", value: file.id.uuidString).execute()
         _ = try? await bucket.remove(paths: [file.storagePath])
@@ -215,9 +215,9 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     let teacher = try await signedIn(.teacherA)
     let course = try await teacher.backend.createCourse(name: unique("Bucket limits"), description: nil)
     let bucket = teacher.raw.storage.from("course-files")
-    let tooBig = "\(course.id.uuidString)/\(UUID().uuidString).pdf"
+    let tooBig = "\(course.id.uuidString.lowercased())/\(UUID().uuidString).pdf"
     await #expect(throws: (any Error).self, "oversize upload accepted") { try await bucket.upload(tooBig, data: Data(count: 50 * 1024 * 1024 + 1), options: .init(contentType: "application/pdf")) }
-    let wrongType = "\(course.id.uuidString)/\(UUID().uuidString).txt"
+    let wrongType = "\(course.id.uuidString.lowercased())/\(UUID().uuidString).txt"
     await #expect(throws: (any Error).self, "text/plain upload accepted") { try await bucket.upload(wrongType, data: Data("hi".utf8), options: .init(contentType: "text/plain")) }
     _ = try? await bucket.remove(paths: [tooBig, wrongType])
     // Files outside the bucket's Course folders cannot be written either.
@@ -230,7 +230,7 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     let teacher = try await signedIn(.teacherA)
     let course = try await teacher.backend.createCourse(name: unique("Row checks"), description: nil)
     func insert(kind: String = "exercise", title: String = "Ok", folder: UUID? = nil, type: String = "pdf", size: Int = 1) async -> Bool {
-        let path = "\((folder ?? course.id).uuidString)/\(UUID().uuidString).\(type)"
+        let path = "\((folder ?? course.id).uuidString.lowercased())/\(UUID().uuidString.lowercased()).\(type)"
         do { try await teacher.raw.from("course_files").insert(NewFile(course_id: course.id, kind: kind, title: title, storage_path: path, file_type: type, size: size)).execute(); return true }
         catch { return false }
     }
