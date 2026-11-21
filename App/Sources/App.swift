@@ -77,6 +77,7 @@ private struct AuthView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var error: String?
+    @State private var showingReset = false
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 220 / 255, green: 213 / 255, blue: 1), Color(red: 246 / 255, green: 233 / 255, blue: 1), Style.canvas], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
@@ -92,9 +93,11 @@ private struct AuthView: View {
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
                 Button(signup ? "Create account" : "Sign in") { submit() }.buttonStyle(PrimaryButton())
+                if !signup { Button("Forgot password?") { showingReset = true }.frame(maxWidth: .infinity).foregroundStyle(Style.green) }
                 Button(signup ? "Already have an account? Sign in" : "New here? Create account") { signup.toggle() }.frame(maxWidth: .infinity).foregroundStyle(Style.green)
             }.padding(24) }
         }
+        .sheet(isPresented: $showingReset) { PasswordResetView(backend: backend, email: email) }
     }
     private func roleCard(_ value: UserRole) -> some View {
         Button { role = value } label: {
@@ -109,6 +112,35 @@ private struct AuthView: View {
             onSignedIn(try await backend.currentUser())
         } catch { self.error = error.localizedDescription }
     } }
+}
+
+private struct PasswordResetView: View {
+    let backend: any Backend
+    @Environment(\.dismiss) private var dismiss
+    @State private var email: String
+    @State private var message: String?
+    @State private var error: String?
+    init(backend: any Backend, email: String) { self.backend = backend; _email = State(initialValue: email) }
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Reset your password").font(.title2.bold())
+                TextField("Email address", text: $email).textContentType(.emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().fieldStyle()
+                if let message { Text(message).font(.footnote).foregroundStyle(Style.green) }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                Button("Send reset link") { submit() }.buttonStyle(PrimaryButton())
+                Spacer()
+            }.padding(24).background(Style.canvas.ignoresSafeArea()).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+    private func submit() {
+        guard EmailAddress.isValid(email) else { error = "Enter a valid email address."; message = nil; return }
+        Task {
+            try? await backend.resetPassword(email: email)
+            error = nil
+            message = "If an account exists for that email, we've sent a reset link."
+        }
+    }
 }
 
 private struct PrimaryButton: ButtonStyle {

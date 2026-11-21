@@ -43,3 +43,12 @@ import Testing
     try await backend.signIn(email: "teacher@example.com", password: "correct horse")
     #expect(try await backend.currentUser()?.name == "Jordan Lee")
 }
+
+@Test func resetPasswordAcceptsWellFormedEmail() async throws {
+    let backend = InMemoryBackend()
+    try await backend.resetPassword(email: "unknown@example.com")
+}
+
+@Test func resetPasswordRejectsMalformedEmailBeforeBackendCall() {
+    #expect(EmailAddress.isValid("not-an-email") == false)
+}

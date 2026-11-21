@@ -1,5 +1,11 @@
 import Foundation
 
+enum EmailAddress {
+    static func isValid(_ value: String) -> Bool {
+        value.range(of: #"^[A-Z0-9a-z.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"#, options: .regularExpression) != nil
+    }
+}
+
 enum UserRole: String, Codable, CaseIterable { case teacher, student }
 struct AppUser: Equatable, Identifiable {
     let id: UUID
