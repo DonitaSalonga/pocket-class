@@ -3,8 +3,10 @@ import Supabase
 
 final class SupabaseBackend: Backend, @unchecked Sendable {
     private let client: SupabaseClient
+    private let cache: FileCache
     /// `storage` holds the persisted session; tests pass their own because the default Keychain needs a signed host.
-    init(url: URL, anonKey: String, storage: any AuthLocalStorage = AuthClient.Configuration.defaultLocalStorage) {
+    init(url: URL, anonKey: String, storage: any AuthLocalStorage = AuthClient.Configuration.defaultLocalStorage, cache: FileCache = .shared) {
+        self.cache = cache
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey, options: .init(auth: .init(storage: storage, emitLocalSessionAsInitialSession: true)))
     }
     func signUp(email: String, password: String, name: String, role: UserRole) async throws {
@@ -13,7 +15,8 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func signIn(email: String, password: String) async throws {
         _ = try await client.auth.signIn(email: email, password: password)
     }
-    func signOut() async throws { try await client.auth.signOut() }
+    // Cached files belong to the signed-in user, so the next account on this device must not see them.
+    func signOut() async throws { cache.clear(); try await client.auth.signOut() }
     func currentUser() async throws -> AppUser? {
         guard let user = client.auth.currentSession?.user else { return nil }
         let profile: Profile = try await client.from("profiles").select().eq("id", value: user.id.uuidString).single().execute().value
@@ -34,7 +37,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
-        return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        let courses: [Course] = try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        cache.keepOnly(courses.map(\.id))
+        return courses
     }
     func joinCourse(code: String) async throws -> Course {
         struct JoinRequest: Encodable { let join_code_input: String }
@@ -59,6 +64,7 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func leaveCourse(courseID: UUID) async throws {
         guard let id = try await currentUserID() else { throw BackendError.invalidCredentials }
         try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: id.uuidString).execute()
+        cache.removeCourse(courseID)
     }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
@@ -73,6 +79,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     }
     func allFiles() async throws -> [CourseFile] {
         try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+    }
+    func download(file: CourseFile) async throws -> URL {
+        try await cache.open(file) { try await client.storage.from("course-files").download(path: file.storagePath) }
     }
     func renameFile(id: UUID, title: String) async throws -> CourseFile {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -89,6 +98,7 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         _ = try await client.storage.from("course-files").remove(paths: [file.storagePath])
         let rows: [CourseFile] = try await client.from("course_files").delete().eq("id", value: file.id.uuidString).select().execute().value
         guard !rows.isEmpty else { throw BackendError.fileNotFound }
+        cache.remove(file)
     }
     private static func mimeType(_ ext: String) -> String {
         switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }

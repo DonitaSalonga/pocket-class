@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B5A1818C456C114D883DC9B /* OpenFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1128D072650E1ADA22A128 /* OpenFileTests.swift */; };
 		0F53FBD8D1C2C5C0F119A0C5 /* TestAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB41944E31F9D70562F5A40 /* TestAccounts.swift */; };
 		28734BA1B99EBD30F63BE800 /* sample.pptx in Resources */ = {isa = PBXBuildFile; fileRef = A4B7A088B60E66FBCB19F7F5 /* sample.pptx */; };
 		32E068E94D81C493F1C545A1 /* CourseDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB13B25F40DFA38650E09FC /* CourseDetail.swift */; };
@@ -24,6 +25,7 @@
 		C09813644CFCD68B8A369259 /* ManageFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E011DF9CA1F70A84CBBA30 /* ManageFileTests.swift */; };
 		D884DEC14D247057855630F2 /* JoinCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */; };
 		E2BDA113FCC2B01066F01D61 /* sample.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 9B4FF36BE6467A645FED45D6 /* sample.pdf */; };
+		E8ED7D8B33252214034B1B7A /* FilePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9554F2DFD183765A91FEE05 /* FilePreview.swift */; };
 		F09C99FAC5840E3272577282 /* CourseFileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */; };
 		F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D69FB99F0A53017602551CD /* Backend.swift */; };
 /* End PBXBuildFile section */
@@ -46,6 +48,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0E1128D072650E1ADA22A128 /* OpenFileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFileTests.swift; sourceTree = "<group>"; };
 		14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthBackendTests.swift; sourceTree = "<group>"; };
 		1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCourseForm.swift; sourceTree = "<group>"; };
 		2188D8AE91666DF2039DEBCC /* Project2.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Project2.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -61,6 +64,7 @@
 		8AA997659C4F383A1E1800BC /* UploadFileForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadFileForm.swift; sourceTree = "<group>"; };
 		9B4FF36BE6467A645FED45D6 /* sample.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = sample.pdf; sourceTree = "<group>"; };
 		A4B7A088B60E66FBCB19F7F5 /* sample.pptx */ = {isa = PBXFileReference; path = sample.pptx; sourceTree = "<group>"; };
+		A9554F2DFD183765A91FEE05 /* FilePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreview.swift; sourceTree = "<group>"; };
 		B7C8474F8F14772198705A82 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
 		BFB13B25F40DFA38650E09FC /* CourseDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDetail.swift; sourceTree = "<group>"; };
 		CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseBackend.swift; sourceTree = "<group>"; };
@@ -112,6 +116,7 @@
 				14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */,
 				8A5F4F709527DC5E5F6745BE /* CourseFileTests.swift */,
 				73E011DF9CA1F70A84CBBA30 /* ManageFileTests.swift */,
+				0E1128D072650E1ADA22A128 /* OpenFileTests.swift */,
 			);
 			name = Tests;
 			path = App/Tests;
@@ -143,6 +148,7 @@
 				65F44387C86DF0C0B4EBC66B /* App.swift */,
 				2D69FB99F0A53017602551CD /* Backend.swift */,
 				BFB13B25F40DFA38650E09FC /* CourseDetail.swift */,
+				A9554F2DFD183765A91FEE05 /* FilePreview.swift */,
 				5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */,
 				1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */,
 				545768E4BE528D0E6A8D97F5 /* RenameFileForm.swift */,
@@ -282,6 +288,7 @@
 				44E5E1DADCEF7898A81EEC80 /* AuthBackendTests.swift in Sources */,
 				F09C99FAC5840E3272577282 /* CourseFileTests.swift in Sources */,
 				C09813644CFCD68B8A369259 /* ManageFileTests.swift in Sources */,
+				0B5A1818C456C114D883DC9B /* OpenFileTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -301,6 +308,7 @@
 				6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */,
 				F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */,
 				32E068E94D81C493F1C545A1 /* CourseDetail.swift in Sources */,
+				E8ED7D8B33252214034B1B7A /* FilePreview.swift in Sources */,
 				D884DEC14D247057855630F2 /* JoinCourseForm.swift in Sources */,
 				8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */,
 				9BF11CF8266C68FD542360D6 /* RenameFileForm.swift in Sources */,
