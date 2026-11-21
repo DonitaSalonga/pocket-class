@@ -4,7 +4,7 @@ import SwiftUI
     var body: some Scene { WindowGroup { RootView().preferredColorScheme(.light) } }
 }
 
-private enum Style {
+enum Style {
     static let green = Color(red: 37 / 255, green: 77 / 255, blue: 67 / 255)
     static let canvas = Color(red: 246 / 255, green: 244 / 255, blue: 252 / 255)
 }
@@ -17,6 +17,8 @@ private struct RootView: View {
     @State private var showingNewCourse = false
     @State private var showingJoin = false
     @State private var selectedCourse: Course?
+    @State private var filesList: [CourseFile] = []
+    @State private var debugKind: CourseFileKind = .presentation
     var body: some View {
         Group {
             if let user {
@@ -31,7 +33,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
         .sheet(isPresented: $showingJoin) { JoinCourseSheet(backend: backend, debugCode: debugJoinCode) { course in if !coursesList.contains(where: { $0.id == course.id }) { coursesList.insert(course, at: 0) }; showingJoin = false } }
-        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher) }
+        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend, kind: debugKind) { filesList.insert($0, at: 0) } }
         .task {
             #if DEBUG
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
@@ -48,6 +50,17 @@ private struct RootView: View {
             user = try? await backend.currentUser()
             coursesList = (try? await backend.myCourses()) ?? []
             #if DEBUG
+            // `-debugUploadSamples` uploads bundled sample files to the first Course once; `-debugChip exercises` opens that list.
+            if arguments.contains("-debugUploadSamples"), let course = coursesList.first, ((try? await backend.files(courseID: course.id)) ?? []).isEmpty {
+                for (kind, title, name) in [(CourseFileKind.presentation, "Week 1: Cells", "sample.pptx"), (.presentation, "Cell diagrams", "sample.pdf"), (.exercise, "Worksheet 1", "sample.pdf"), (.exercise, "Lab report template", "sample.pptx")] {
+                    guard let url = Bundle.main.url(forResource: (name as NSString).deletingPathExtension, withExtension: (name as NSString).pathExtension), let data = try? Data(contentsOf: url) else { continue }
+                    _ = try? await backend.uploadFile(courseID: course.id, kind: kind, title: title, data: data, fileName: name)
+                }
+            }
+            #endif
+            filesList = (try? await backend.allFiles()) ?? []
+            #if DEBUG
+            if value("-debugChip") == "exercises" { debugKind = .exercise }
             if arguments.contains("-debugOpenCourse") { selectedCourse = coursesList.first }
             if debugJoinCode != nil { showingJoin = true }
             #endif
@@ -62,7 +75,7 @@ private struct RootView: View {
             }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
             if coursesList.isEmpty { Spacer(); Text(user.role == .teacher ? "Your courses will appear here." : "Courses you join will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity); Spacer() }
-            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index) }.buttonStyle(.plain) } } } }
+            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index, counts: CourseFileCounts(files: filesList).label(for: course.id)) }.buttonStyle(.plain) } } } }
             Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } else { showingJoin = true } }.buttonStyle(PrimaryButton())
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
@@ -172,18 +185,19 @@ private struct PasswordResetView: View {
     }
 }
 
-private struct PrimaryButton: ButtonStyle {
+struct PrimaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label.font(.headline).foregroundStyle(.white).frame(maxWidth: .infinity).padding(17).background(Style.green, in: RoundedRectangle(cornerRadius: 16)).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(.easeOut(duration: 0.14), value: configuration.isPressed) }
 }
 
 private struct CourseCard: View {
     let course: Course
     let index: Int
+    let counts: String
     private let colors: [Color] = [.init(red: 37/255, green: 77/255, blue: 67/255), .init(red: 191/255, green: 137/255, blue: 54/255), .init(red: 137/255, green: 120/255, blue: 180/255)]
     var body: some View { let color = colors[index % colors.count]
         VStack(alignment: .leading, spacing: 20) {
             HStack { Text(course.name).font(.title2.bold()); Spacer(); Text(String(format: "%02d", index + 1)).font(.system(size: 50, weight: .black, design: .rounded)).opacity(0.18) }
-            Text("0 Presentations · 0 Exercises").font(.caption.bold()).padding(.horizontal, 12).padding(.vertical, 8).background(.white.opacity(0.2), in: Capsule())
+            Text(counts).font(.caption.bold()).padding(.horizontal, 12).padding(.vertical, 8).background(.white.opacity(0.2), in: Capsule())
         }.foregroundStyle(.white).padding(20).frame(maxWidth: .infinity, alignment: .leading).background(color, in: RoundedRectangle(cornerRadius: 24)).shadow(color: color.opacity(0.2), radius: 12, y: 6)
     }
 }
@@ -231,17 +245,6 @@ private struct JoinCourseSheet: View {
         }
         .task { if let debugCode { form.code = debugCode; join() } }
     } }
-}
-
-private struct CourseDetail: View {
-    let course: Course
-    let teacher: Bool
-    @State private var copied = false
-    var body: some View { VStack(alignment: .leading, spacing: 20) {
-        Text(course.name).font(.largeTitle.bold())
-        if teacher { Text("Join Code").font(.headline); HStack { Text(course.joinCode).font(.system(.title, design: .monospaced).bold()); Spacer(); Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = course.joinCode; copied = true }.buttonStyle(.borderedProminent).tint(Style.green) }.padding(18).background(.white, in: RoundedRectangle(cornerRadius: 18)) }
-        Spacer()
-    }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas).navigationTitle("Course") }
 }
 
 private extension View { func fieldStyle() -> some View { padding(16).background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 15)) } }

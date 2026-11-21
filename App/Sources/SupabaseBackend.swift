@@ -49,6 +49,23 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
             }
         }
     }
+    func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
+        try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
+        let ext = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        let path = CourseFileValidation.newStoragePath(courseID: courseID, fileName: fileName)
+        try await client.storage.from("course-files").upload(path, data: data, options: .init(contentType: Self.mimeType(ext)))
+        struct NewFile: Encodable { let course_id: UUID; let kind: String; let title: String; let storage_path: String; let file_type: String; let size: Int }
+        return try await client.from("course_files").insert(NewFile(course_id: courseID, kind: kind.rawValue, title: title, storage_path: path, file_type: ext, size: data.count)).select().single().execute().value
+    }
+    func files(courseID: UUID) async throws -> [CourseFile] {
+        try await client.from("course_files").select().eq("course_id", value: courseID.uuidString).order("uploaded_at", ascending: false).execute().value
+    }
+    func allFiles() async throws -> [CourseFile] {
+        try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+    }
+    private static func mimeType(_ ext: String) -> String {
+        switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }
+    }
 }
 
 private struct Profile: Decodable { let name: String; let role: UserRole }
