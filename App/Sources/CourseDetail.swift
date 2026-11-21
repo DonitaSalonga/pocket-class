@@ -65,10 +65,10 @@ struct CourseDetail: View {
                 HStack(spacing: 10) { chip("Presentations", .presentation); chip("Exercises", .exercise) }
                 if teacher { Button("Upload") { importing = true }.buttonStyle(PrimaryButton()).accessibilityIdentifier("uploadButton") }
                 if teacher { Button("Roster") { showingRoster = true }.buttonStyle(PrimaryButton()) }
+                else { Button("Leave Course", role: .destructive) { confirmingLeave = true }.buttonStyle(PrimaryButton()) }
                 if teacher { Button("New Join Code") { confirmingNewCode = true }.buttonStyle(PrimaryButton()) }
                 if teacher { Button("Delete Course", role: .destructive) { confirmingDelete = true }.font(.headline).foregroundStyle(Color(red: 192 / 255, green: 57 / 255, blue: 43 / 255)).frame(maxWidth: .infinity).padding(17).background(.white, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("deleteCourseButton") }
                 if let adminError { Text(adminError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("adminError") }
-                else { Button("Leave Course", role: .destructive) { confirmingLeave = true }.buttonStyle(PrimaryButton()) }
                 if let leaveError { Text(leaveError).font(.footnote).foregroundStyle(.red) }
                 if let importError { Text(importError).font(.footnote).foregroundStyle(.red) }
                 if let manageError { Text(manageError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("manageError") }
