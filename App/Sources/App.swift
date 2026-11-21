@@ -13,6 +13,9 @@ private struct RootView: View {
     private let backend: any Backend = SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
     @State private var user: AppUser?
     @State private var tab = 0
+    @State private var coursesList: [Course] = []
+    @State private var showingNewCourse = false
+    @State private var selectedCourse: Course?
     var body: some View {
         Group {
             if let user {
@@ -25,6 +28,11 @@ private struct RootView: View {
                 }.background(Style.canvas.ignoresSafeArea())
             } else { AuthView(backend: backend) { user = $0 } }
         }
+        .sheet(isPresented: $showingNewCourse) { NewCourseSheet { name, description in
+            do { let course = try await backend.createCourse(name: name, description: description); coursesList.insert(course, at: 0); showingNewCourse = false }
+            catch { }
+        } }
+        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher) }
         .task {
             #if DEBUG
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
@@ -36,6 +44,7 @@ private struct RootView: View {
             }
             #endif
             user = try? await backend.currentUser()
+            coursesList = (try? await backend.myCourses()) ?? []
         }
     }
     private func courses(_ user: AppUser) -> some View {
@@ -46,10 +55,9 @@ private struct RootView: View {
                 avatar(user, size: 48)
             }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
-            Spacer()
-            Text("Your courses will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity)
-            Spacer()
-            Button(user.role == .teacher ? "+ New Course" : "Join with code") {}.buttonStyle(PrimaryButton()).disabled(true).opacity(0.72)
+            if coursesList.isEmpty { Spacer(); Text("Your courses will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity); Spacer() }
+            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index) }.buttonStyle(.plain) } } } }
+            Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } }.buttonStyle(PrimaryButton()).disabled(user.role != .teacher).opacity(user.role == .teacher ? 1 : 0.72)
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
     private func profile(_ user: AppUser) -> some View {
@@ -114,4 +122,41 @@ private struct AuthView: View {
 private struct PrimaryButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label.font(.headline).foregroundStyle(.white).frame(maxWidth: .infinity).padding(17).background(Style.green, in: RoundedRectangle(cornerRadius: 16)).scaleEffect(configuration.isPressed ? 0.97 : 1).animation(.easeOut(duration: 0.14), value: configuration.isPressed) }
 }
+
+private struct CourseCard: View {
+    let course: Course
+    let index: Int
+    private let colors: [Color] = [.init(red: 37/255, green: 77/255, blue: 67/255), .init(red: 191/255, green: 137/255, blue: 54/255), .init(red: 137/255, green: 120/255, blue: 180/255)]
+    var body: some View { let color = colors[index % colors.count]
+        VStack(alignment: .leading, spacing: 20) {
+            HStack { Text(course.name).font(.title2.bold()); Spacer(); Text(String(format: "%02d", index + 1)).font(.system(size: 50, weight: .black, design: .rounded)).opacity(0.18) }
+            Text("0 Presentations · 0 Exercises").font(.caption.bold()).padding(.horizontal, 12).padding(.vertical, 8).background(.white.opacity(0.2), in: Capsule())
+        }.foregroundStyle(.white).padding(20).frame(maxWidth: .infinity, alignment: .leading).background(color, in: RoundedRectangle(cornerRadius: 24)).shadow(color: color.opacity(0.2), radius: 12, y: 6)
+    }
+}
+
+private struct NewCourseSheet: View {
+    let create: (String, String?) async -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var description = ""
+    var body: some View { NavigationStack { Form { TextField("Course name", text: $name); TextField("Description (optional)", text: $description) }
+        .navigationTitle("New Course").navigationBarTitleDisplayMode(.inline).toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { await create(name, description.isEmpty ? nil : description) } }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty) }
+        }
+    } }
+}
+
+private struct CourseDetail: View {
+    let course: Course
+    let teacher: Bool
+    @State private var copied = false
+    var body: some View { VStack(alignment: .leading, spacing: 20) {
+        Text(course.name).font(.largeTitle.bold())
+        if teacher { Text("Join Code").font(.headline); HStack { Text(course.joinCode).font(.system(.title, design: .monospaced).bold()); Spacer(); Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = course.joinCode; copied = true }.buttonStyle(.borderedProminent).tint(Style.green) }.padding(18).background(.white, in: RoundedRectangle(cornerRadius: 18)) }
+        Spacer()
+    }.padding(24).frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas).navigationTitle("Course") }
+}
+
 private extension View { func fieldStyle() -> some View { padding(16).background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 15)) } }
