@@ -400,3 +400,53 @@ private struct Membership: Decodable {
     #expect(try await owner.raw.storage.from("course-files").download(path: file.storagePath) == tinyPDF)
     await cleanUp([file], with: owner.raw)
 }
+
+@Test func regeneratedJoinCodeRefusesTheOldOneAndAcceptsTheNewOne() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Regenerate"), description: nil)
+    let newCode = try await teacher.backend.regenerateJoinCode(courseID: course.id)
+    #expect(newCode != course.joinCode)
+    #expect(newCode.count == 6)
+    #expect(try await teacher.backend.myCourses().first { $0.id == course.id }?.joinCode == newCode)
+    let student = try await signedIn(.studentB)
+    await #expect(throws: BackendError.invalidJoinCode) { try await student.backend.joinCourse(code: course.joinCode) }
+    #expect(try await student.backend.joinCourse(code: newCode).id == course.id)
+    try await teacher.backend.deleteCourse(course)
+}
+
+@Test func onlyTheOwningTeacherCanRegenerateOrDeleteACourse() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Admin guard"), description: nil)
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Keep", data: tinyPDF, fileName: "keep.pdf")
+    for account in [PoolAccount.teacherB, .studentA, .studentB, .outsider] {
+        let other = try await signedIn(account)
+        await #expect(throws: BackendError.notATeacher, "\(account) regenerated") { try await other.backend.regenerateJoinCode(courseID: course.id) }
+        await #expect(throws: BackendError.notATeacher, "\(account) deleted") { try await other.backend.deleteCourse(course) }
+    }
+    let after = try await teacher.backend.myCourses().first { $0.id == course.id }
+    #expect(after?.joinCode == course.joinCode)
+    #expect(try await teacher.raw.storage.from("course-files").download(path: file.storagePath) == tinyPDF)
+    try await teacher.backend.deleteCourse(course)
+}
+
+@Test func deletingACourseRemovesRosterFileRowsAndStoredObjects() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Throwaway"), description: nil)
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Gone", data: tinyPDF, fileName: "gone.pdf")
+    let folder = course.id.uuidString.lowercased()
+    #expect(try await teacher.raw.storage.from("course-files").list(path: folder).count == 1)
+
+    try await teacher.backend.deleteCourse(course)
+
+    #expect(try await teacher.backend.myCourses().contains { $0.id == course.id } == false)
+    #expect(try await student.backend.myCourses().contains { $0.id == course.id } == false)
+    let studentRows: [Membership] = try await student.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(studentRows.isEmpty)
+    let fileRows: [CourseFile] = try await teacher.raw.from("course_files").select().eq("id", value: file.id.uuidString).execute().value
+    #expect(fileRows.isEmpty)
+    #expect(try await teacher.raw.storage.from("course-files").list(path: folder).isEmpty)
+}

@@ -24,10 +24,16 @@ struct CourseDetail: View {
     let backend: any Backend
     let onUploaded: (CourseFile) -> Void
     let onLeave: () -> Void
+    let onDeleted: () -> Void
+    let onCodeChanged: () -> Void
     var onChanged: () -> Void = {}
     @State var kind: CourseFileKind = .presentation
     @State private var files: [CourseFile] = []
+    @State private var joinCode: String
     @State private var copied = false
+    @State private var confirmingNewCode = debugFlag("-debugConfirmNewCode")
+    @State private var confirmingDelete = debugFlag("-debugConfirmDeleteCourse")
+    @State private var adminError: String?
     @State private var importing = false
     @State private var picked: PickedFile?
     @State private var importError: String?
@@ -40,6 +46,11 @@ struct CourseDetail: View {
     @State private var deleting: CourseFile?
     @State private var manageError: String?
 
+    init(course: Course, teacher: Bool, backend: any Backend, onUploaded: @escaping (CourseFile) -> Void, onLeave: @escaping () -> Void, onDeleted: @escaping () -> Void, onCodeChanged: @escaping () -> Void, onChanged: @escaping () -> Void, kind: CourseFileKind) {
+        self.course = course; self.teacher = teacher; self.backend = backend; self.onUploaded = onUploaded; self.onLeave = onLeave; self.onDeleted = onDeleted; self.onCodeChanged = onCodeChanged; self.onChanged = onChanged
+        _kind = State(initialValue: kind); _joinCode = State(initialValue: course.joinCode)
+    }
+
     private static let pickerTypes = (["pptx", "ppt", "key", "docx"].compactMap { UTType(filenameExtension: $0) }) + [.pdf]
     private var visible: [CourseFile] { files.filter { $0.kind == kind } }
 
@@ -49,12 +60,15 @@ struct CourseDetail: View {
                 Text(course.name).font(.largeTitle.bold())
                 if teacher {
                     Text("Join Code").font(.headline)
-                    HStack { Text(course.joinCode).font(.system(.title, design: .monospaced).bold()); Spacer(); Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = course.joinCode; copied = true }.buttonStyle(.borderedProminent).tint(Style.green) }.padding(18).background(.white, in: RoundedRectangle(cornerRadius: 18))
+                    HStack { Text(joinCode).font(.system(.title, design: .monospaced).bold()); Spacer(); Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = joinCode; copied = true }.buttonStyle(.borderedProminent).tint(Style.green) }.padding(18).background(.white, in: RoundedRectangle(cornerRadius: 18))
                 }
                 HStack(spacing: 10) { chip("Presentations", .presentation); chip("Exercises", .exercise) }
                 if teacher { Button("Upload") { importing = true }.buttonStyle(PrimaryButton()).accessibilityIdentifier("uploadButton") }
                 if teacher { Button("Roster") { showingRoster = true }.buttonStyle(PrimaryButton()) }
                 else { Button("Leave Course", role: .destructive) { confirmingLeave = true }.buttonStyle(PrimaryButton()) }
+                if teacher { Button("New Join Code") { confirmingNewCode = true }.buttonStyle(PrimaryButton()) }
+                if teacher { Button("Delete Course", role: .destructive) { confirmingDelete = true }.font(.headline).foregroundStyle(Color(red: 192 / 255, green: 57 / 255, blue: 43 / 255)).frame(maxWidth: .infinity).padding(17).background(.white, in: RoundedRectangle(cornerRadius: 16)).accessibilityIdentifier("deleteCourseButton") }
+                if let adminError { Text(adminError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("adminError") }
                 if let leaveError { Text(leaveError).font(.footnote).foregroundStyle(.red) }
                 if let importError { Text(importError).font(.footnote).foregroundStyle(.red) }
                 if let manageError { Text(manageError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("manageError") }
@@ -93,6 +107,14 @@ struct CourseDetail: View {
                 renaming = nil
             }
         }
+        .confirmationDialog("Make a new Join Code?", isPresented: $confirmingNewCode, titleVisibility: .visible) {
+            Button("New Join Code") { Task { await regenerate() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("The old code stops working right away. Students already on the Roster stay.") }
+        .confirmationDialog("Delete \(course.name)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete Course", role: .destructive) { Task { await deleteCourse() } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("“\(course.name)”, its Roster and all its files will be removed for everyone. This cannot be undone.") }
         .confirmationDialog("Delete this file?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { file in
             Button("Delete", role: .destructive) { Task { await delete(file) } }
             Button("Cancel", role: .cancel) {}
@@ -114,6 +136,16 @@ struct CourseDetail: View {
             do { preview = PreviewItem(title: file.title, url: try await backend.download(file: file)) }
             catch { importError = "Could not open \"\(file.title)\". Check your connection and try again." }
         }
+    }
+
+    private func regenerate() async {
+        do { joinCode = try await backend.regenerateJoinCode(courseID: course.id); copied = false; adminError = nil; onCodeChanged() }
+        catch { adminError = "Could not make a new Join Code. Check your connection and try again." }
+    }
+
+    private func deleteCourse() async {
+        do { try await backend.deleteCourse(course); onDeleted() }
+        catch { adminError = "Could not delete the Course. Check your connection and try again." }
     }
 
     private func delete(_ file: CourseFile) async {
