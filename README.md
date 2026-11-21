@@ -1,49 +1,110 @@
-# Pocket Class
+<p align="center">
+  <img src="assets/icon.svg" alt="Pocket Class logo" width="120">
+</p>
 
-Native SwiftUI iPhone app. Requires Xcode 27 and xcodegen.
+<h1 align="center">Pocket Class</h1>
 
-## Run
+<p align="center"><b>Your class files, in your pocket.</b><br>
+An iPhone app where teachers share presentations and exercises with their class.</p>
 
-Copy `App/SupabaseConfig.example.swift` to `App/Sources/SupabaseConfig.swift`, then fill in `SUPABASE_URL` and `SUPABASE_ANON_KEY` from `~/.config/pocket-class/supabase.env`. This generated file is ignored by git. Run `xcodegen generate`, then open `PocketClass.xcodeproj` in Xcode.
+<p align="center">
+  <img src="docs/screenshots/final/04-teacher-courses.png" alt="Teacher's Courses screen" width="200">
+  <img src="docs/screenshots/final/05-teacher-course-presentations.png" alt="Course screen with Presentations" width="200">
+  <img src="docs/screenshots/final/12-student-courses.png" alt="Student's Courses screen" width="200">
+  <img src="docs/screenshots/final/18-offline.png" alt="Saved files shown offline" width="200">
+</p>
 
-## Tests
+## Overview
 
-Run unit tests: `xcodebuild test -project PocketClass.xcodeproj -scheme PocketClass -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' CODE_SIGNING_ALLOWED=NO`
+**Pocket Class** is a school project: a small learning management system (LMS) for the iPhone. Teachers create a Course, upload their slides and practice files, and share a Join Code. Students type the code and every Presentation and Exercise for that Course is on their phone, even without internet once opened.
 
-Run Supabase integration tests: `xcodebuild test -project PocketClass.xcodeproj -scheme PocketClassIntegration -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' CODE_SIGNING_ALLOWED=NO`
+It has two kinds of users:
 
-Generate the ignored config from `~/.config/pocket-class/supabase.env`:
+- **Teachers** create Courses and upload files.
+- **Students** join Courses and open the files.
 
-```sh
-set -a
-source ~/.config/pocket-class/supabase.env
-set +a
-cat > App/Sources/SupabaseConfig.swift <<EOF
-import Foundation
-enum SupabaseConfig {
-    static let url = URL(string: "$SUPABASE_URL")!
-    static let anonKey = "$SUPABASE_ANON_KEY"
-}
-EOF
-xcodegen generate
-```
+## What it does
 
-### Integration test accounts
+- **Courses with Join Codes:** a Teacher creates a Course and gets a short, easy-to-read code. A new code can be made at any time, and the old one stops working.
+- **Uploads:** Teachers upload Presentations (`.pptx`, `.ppt`, `.key`, `.pdf`) and Exercises (`.pdf`, `.docx`, `.pptx`), up to 50 MB each, and can rename or delete them.
+- **Two lists per Course:** Presentations and Exercises, newest first, each with a coloured file-type badge.
+- **Preview in the app:** Students and Teachers open files with the built-in iOS preview, and can share them or open them in Keynote, PowerPoint or Files.
+- **Offline copies:** files a Student opened open again without internet. Saved copies are cleared when the Student leaves or is removed, or the file or Course is deleted.
+- **Roster:** the Teacher sees who joined and can remove a Student; a Student can leave a Course.
+- **Accounts:** sign up with email and password as a Teacher or Student (the role never changes), and reset a forgotten password by email.
 
-Supabase limits auth sign-ups and sign-ins per IP (about 30 per 5 minutes), so the integration tests share a fixed pool of accounts instead of creating users per test: `teacherA`, `teacherB`, `studentA`, `studentB` and `outsider` (`pool-<name>@example.com`). On first use `App/IntegrationTests/TestAccounts.swift` creates `~/.config/pocket-class/test-accounts.env` (mode 600, random passwords, never in the repo), signs each account up if it cannot sign in, and signs in once per account per run. One test still does a real fresh sign-up. Pool teachers keep their Courses between runs (there is no delete policy), so tests give Courses unique names and never assert an exact list. Never call `signOut` on a pool account: it revokes the sessions of every test using it. If the env file is lost, delete the `pool-*` users in the Supabase dashboard and rerun. Each run costs about 14 auth calls, so leave a few minutes between full runs and do not run them in parallel.
+## Why use Pocket Class
 
-## Sessions and signing
+- **One place for class files.** No more slides lost in group chats or email threads.
+- **Private by default.** Only the Course's Teacher and the Students on its Roster can see its files. The server enforces this, not just the app.
+- **Works offline.** Files you opened stay readable on the bus or without data.
+- **Simple to join.** Students need a code, not an invite to their email.
+- **Free to run.** It fits on Supabase's free plan.
 
-The session lives in the Keychain, which needs a signed build. Build and run through Xcode (or `xcodebuild` without `CODE_SIGNING_ALLOWED=NO`) to stay signed in across launches. Integration tests use an in-memory session store instead, so they work unsigned.
+## How it works
 
-Debug builds accept `-debugEmail <email> -debugPassword <password> [-debugTab profile]` launch arguments to sign in without typing (used for screenshots).
+1. The **Teacher** signs up, creates a Course and shares its Join Code.
+2. The **Student** signs up and enters the code; the server checks it and adds them to the Course's Roster.
+3. The **Teacher** uploads Presentations and Exercises; files go to private storage on **Supabase**.
+4. The **Student** opens a file; the app downloads it, previews it, and keeps a copy for offline use.
+5. **Supabase's access rules** allow every request only for the Course's Teacher or a Student on its Roster.
 
-## Demo data
+### Backend flow
 
-`scripts/seed-demo.sh` creates (and can safely re-run) a demo Teacher "Ms. Rivera", a demo Student "Ana Cruz", the Course "Biology 101" with 2 Presentations and 2 Exercises from the sample files in `App/DebugSamples`, and puts Ana on its Roster. It needs `jq` and `curl`, uses only the anon key and normal sign-in, and keeps the demo passwords in `~/.config/pocket-class/demo-accounts.env` (mode 600, created on first run, never in the repo). To demo, run the seed, then sign in with the emails and passwords from that file. Debug builds can skip typing with `-debugEmail <email> -debugPassword <password>`.
+<p align="center">
+  <img src="docs/diagrams/backend-flow.png" alt="Backend flow: sign-in by role, Teacher and Student actions, and the server access check on every Course or file request" width="700">
+</p>
 
-## Cleaning up test data
+## Screens
 
-Integration tests and screenshot runs leave Courses on the pool Teachers' accounts. Delete them from the Course screen (Delete Course) or run `scripts/cleanup-test-data.sh` (needs the linked supabase CLI, `jq`, `curl`). It prints counts, then with `--yes` deletes every Course (and its stored files) owned by the pool Teachers and the stale `test+*`/`qa+*@example.com` auth users. It never touches `pool-*` or demo accounts.
+| Sign in | Teacher | Student |
+| --- | --- | --- |
+| <img src="docs/screenshots/final/01-sign-up.png" alt="Sign up" width="180"> | <img src="docs/screenshots/final/09-roster.png" alt="Roster" width="180"> | <img src="docs/screenshots/final/13-join-sheet.png" alt="Join with code" width="180"> |
+| <img src="docs/screenshots/final/03-forgot-password.png" alt="Forgot password" width="180"> | <img src="docs/screenshots/final/07-upload-sheet.png" alt="Upload a file" width="180"> | <img src="docs/screenshots/final/15-quick-look-preview.png" alt="File preview" width="180"> |
 
-Final walkthrough screenshots (demo accounts, Simulator) are in `docs/screenshots/final/`. Debug builds accept `-debugOffline` to simulate a lost connection (see `18-offline.png`).
+All 18 screens are in [`docs/screenshots/final/`](docs/screenshots/final/).
+
+## Tech stack
+
+| Part | Built with |
+| --- | --- |
+| iPhone app | Swift, SwiftUI, iOS 18+, Quick Look; project generated with [xcodegen](https://github.com/yonaskolb/XcodeGen) |
+| Backend | [Supabase](https://supabase.com): Auth, Postgres with row-level security, Storage (private bucket), SQL functions |
+| Client library | [supabase-swift](https://github.com/supabase/supabase-swift) |
+| Testing | Swift Testing: unit tests on an in-memory backend, integration tests against the real Supabase project |
+| Design | Style B: colour-blocked course cards, deep-green accents, floating pill tab bar ([UI direction](docs/design/ui-direction.md)) |
+
+## Getting started
+
+You need a Mac with **Xcode 27** and **xcodegen** (`brew install xcodegen`).
+
+1. Clone the repo and generate the Supabase config as [DEVELOPMENT.md](docs/DEVELOPMENT.md#tests) shows.
+2. Run `xcodegen generate`, then open `PocketClass.xcodeproj`.
+3. Choose the **PocketClass** scheme and an iPhone simulator, then press **Run**.
+4. Optional: run `scripts/seed-demo.sh` to create a demo Teacher, a demo Student and a "Biology 101" Course with files.
+
+### For teachers
+
+1. Sign up and choose **Teacher**.
+2. Tap **+ New Course**, give it a name, and share its **Join Code**.
+3. Open the Course, tap **Upload**, pick a file, choose Presentation or Exercise and give it a title.
+4. Use **Roster** to see who joined, and **New Join Code** if the code leaked.
+
+### For students
+
+1. Sign up and choose **Student**.
+2. Tap **Join with code** and enter the code from your teacher.
+3. Open the Course and tap a file to preview it, or share it to another app.
+
+## For developers
+
+Tests, demo data, test accounts and clean-up scripts are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Domain terms are in [GLOSSARY.md](GLOSSARY.md) and decisions in [docs/adr/](docs/adr/).
+
+## Known limitations
+
+- iPhone only, light mode only. No iPad or dark mode.
+- Students can't submit answers; there are no grades, deadlines or quizzes.
+- Anyone can sign up as a Teacher; a Teacher sees only their own Courses.
+- Staying signed in after a relaunch needs a signed build (run from Xcode).
+- Uploads show a spinner, not a progress bar.
+- Supabase's free plan limits files to 50 MB each and 1 GB in total, and pauses the project after a week without use.
