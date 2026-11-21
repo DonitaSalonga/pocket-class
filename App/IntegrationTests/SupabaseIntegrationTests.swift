@@ -95,10 +95,11 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
 
 @Test func studentCannotCreateCourse() async throws {
     let student = try await signedIn(.studentA)
-    await #expect(throws: (any Error).self) { try await student.backend.createCourse(name: "Biology", description: nil) }
-    let raw = student.raw
-    let rows: [Course] = try await raw.from("courses").select().execute().value
-    #expect(rows.isEmpty)
+    let name = unique("Student attempt")
+    await #expect(throws: (any Error).self) { try await student.backend.createCourse(name: name, description: nil) }
+    // Pool Students sit on Rosters, so their list is not empty; it just must not contain the refused Course.
+    let rows: [Course] = try await student.raw.from("courses").select().execute().value
+    #expect(rows.contains { $0.name == name } == false)
 }
 
 @Test func teachersCannotReadEachOthersCourses() async throws {
