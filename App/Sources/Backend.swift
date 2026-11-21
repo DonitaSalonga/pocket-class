@@ -67,6 +67,7 @@ protocol Backend: Sendable {
     func myCourses() async throws -> [Course]
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
+    func allFiles() async throws -> [CourseFile]
 }
 
 enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, unsupportedFileType, fileTooLarge
@@ -76,6 +77,7 @@ enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEma
 extension Backend {
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
     func files(courseID: UUID) async throws -> [CourseFile] { [] }
+    func allFiles() async throws -> [CourseFile] { [] }
 }
 
 actor InMemoryBackend: Backend {
@@ -120,5 +122,10 @@ actor InMemoryBackend: Backend {
     func files(courseID: UUID) async throws -> [CourseFile] {
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
         return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+    }
+    func allFiles() async throws -> [CourseFile] {
+        guard let user = currentUser(), user.role == .teacher else { return [] }
+        let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
+        return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
     }
 }
