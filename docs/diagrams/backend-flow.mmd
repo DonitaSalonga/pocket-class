@@ -1,0 +1,83 @@
+flowchart TD
+    Backend["Supabase<br/>Sign-in · database · file storage"]
+
+    subgraph Auth["Auth"]
+        Start["Sign up or sign in"]
+        Signup["Sign up: email + password<br/>Choose Teacher or Student"]
+        Ready["Role is fixed forever<br/>Anyone may choose Teacher<br/>No email confirmation; account works immediately"]
+        Login["Sign in: email + password"]
+        Forgot["Forgot password"]
+        Reset["Reset password by email"]
+        Role{"Role?"}
+        Start -->|Sign up| Signup --> Ready --> Role
+        Start -->|Sign in| Login --> Role
+        Login --> Forgot --> Reset --> Login
+    end
+
+    subgraph Teacher["Teacher"]
+        Create["Create Course<br/>Get Join Code"]
+        Manage["Manage Course"]
+        Code["Make new Join Code<br/>Old Join Code stops working"]
+        Upload["Upload titled file<br/>Maximum 50 MB per file"]
+        Presentation["Presentation<br/>.pptx · .ppt · .key · .pdf"]
+        Exercise["Exercise<br/>.pdf · .docx · .pptx"]
+        Files["Rename or delete files"]
+        Roster["View Roster<br/>Teacher only"]
+        Remove["Remove a Student"]
+        Confirm{"Confirm Course deletion?"}
+        Delete["Delete Course<br/>Delete all its files"]
+        Create --> Manage
+        Manage --> Code
+        Manage --> Upload
+        Upload --> Presentation
+        Upload --> Exercise
+        Manage --> Files
+        Manage --> Roster --> Remove
+        Manage --> Confirm
+        Confirm -->|Yes| Delete
+        Confirm -->|No| Manage
+    end
+
+    subgraph Student["Student"]
+        Enter["Enter Join Code"]
+        Valid{"Valid Join Code?"}
+        Error["Show error"]
+        Join["Join Course<br/>Added to Roster"]
+        Lists["See Course files<br/>Presentations and Exercises: two lists<br/>Newest first in each list"]
+        Open["Open / preview file<br/>Keep on phone for offline use"]
+        Download["Download file"]
+        Leave["Leave Course<br/>Removed from Roster"]
+        Limits["No answer submissions, grades, deadlines,<br/>folders, or links between<br/>Exercises and Presentations"]
+        Enter --> Valid
+        Valid -->|No| Error --> Enter
+        Valid -->|Yes| Join --> Lists
+        Lists --> Open
+        Lists --> Download
+        Lists --> Leave
+        Lists -.- Limits
+    end
+
+    subgraph Access["Server access check — Supabase access rules"]
+        Request["Every Course / file request"]
+        Allowed{"Course's Teacher or<br/>Student on its Roster?"}
+        Allow["Allow request"]
+        Deny["Deny request"]
+        Request --> Allowed
+        Allowed -->|Yes| Allow
+        Allowed -->|No| Deny
+    end
+
+    Cleanup["Student removed or leaves,<br/>or Course / file deleted"]
+    Online["Next time app is online:<br/>clear affected Student offline copies"]
+
+    Backend --- Start
+    Role -->|Teacher| Create
+    Role -->|Student| Enter
+    Backend -.- Request
+    Manage -.->|Course / file requests| Request
+    Lists -.->|Course / file requests| Request
+    Remove --> Cleanup
+    Leave --> Cleanup
+    Delete --> Cleanup
+    Files -->|File deleted| Cleanup
+    Cleanup --> Online

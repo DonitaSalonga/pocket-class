@@ -1,0 +1,67 @@
+name: PocketClass
+options:
+  bundleIdPrefix: com.donita.pocketclass
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+targets:
+  PocketClass:
+    type: application
+    platform: iOS
+    # DebugSamples are two tiny real files used by the DEBUG `-debugUploadSamples` launch argument; Release leaves them out.
+    sources: [App/Sources, App/DebugSamples]
+    settings:
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: sample.pdf sample.pptx
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass
+        INFOPLIST_KEY_CFBundleDisplayName: Pocket Class
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
+        TARGETED_DEVICE_FAMILY: 1
+    dependencies:
+      - package: Supabase
+  PocketClassTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [App/Tests]
+    dependencies:
+      - target: PocketClass
+      - package: Supabase
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass.tests
+  PocketClassIntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [App/IntegrationTests]
+    dependencies:
+      - target: PocketClass
+      - package: Supabase
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass.integration-tests
+schemes:
+  PocketClass:
+    build:
+      targets:
+        PocketClass: all
+        PocketClassTests: [test]
+    test:
+      targets:
+        - PocketClassTests
+  PocketClassIntegration:
+    build:
+      targets:
+        PocketClass: all
+        PocketClassIntegrationTests: [test]
+    test:
+      targets:
+        - PocketClassIntegrationTests
