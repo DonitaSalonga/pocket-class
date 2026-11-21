@@ -49,6 +49,17 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
             }
         }
     }
+    func roster(courseID: UUID) async throws -> [RosterStudent] {
+        struct Request: Encodable { let target_course_id: UUID }
+        return try await client.rpc("course_roster", params: Request(target_course_id: courseID)).execute().value
+    }
+    func removeStudent(courseID: UUID, studentID: UUID) async throws {
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: studentID.uuidString).execute()
+    }
+    func leaveCourse(courseID: UUID) async throws {
+        guard let id = try await currentUserID() else { throw BackendError.invalidCredentials }
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: id.uuidString).execute()
+    }
 }
 
 private struct Profile: Decodable { let name: String; let role: UserRole }
