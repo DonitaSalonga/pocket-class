@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Project2
+@testable import PocketClass
 
 /// The in-memory store holds one signed-in user, so tests switch accounts with `signIn`.
 private func scene() async throws -> (backend: InMemoryBackend, course: Course) {

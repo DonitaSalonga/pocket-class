@@ -1,4 +1,4 @@
-# project-2
+# Pocket Class
 
 iPhone app (SwiftUI) for a school project: teachers upload presentations and exercises to courses, students open them.
 
@@ -6,7 +6,7 @@ iPhone app (SwiftUI) for a school project: teachers upload presentations and exe
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues on `DonitaSalonga/project-2`. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues on `DonitaSalonga/pocket-class`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
