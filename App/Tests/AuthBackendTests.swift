@@ -35,3 +35,11 @@ import Testing
     }
     #expect(try await backend.currentUser()?.role == .teacher)
 }
+
+@Test func signInAfterSignOutRestoresUser() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
+    try await backend.signOut()
+    try await backend.signIn(email: "teacher@example.com", password: "correct horse")
+    #expect(try await backend.currentUser()?.name == "Jordan Lee")
+}

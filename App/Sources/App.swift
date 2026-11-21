@@ -26,11 +26,16 @@ private struct RootView: View {
             } else { AuthView(backend: backend) { user = $0 } }
         }
         .task {
+            #if DEBUG
+            // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
             let arguments = ProcessInfo.processInfo.arguments
-            if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), ["courses", "profile"].contains(arguments[index + 1]) {
-                user = AppUser(id: UUID(), name: "Jordan Lee", email: "jordan@example.com", role: .teacher)
-                tab = arguments[index + 1] == "profile" ? 1 : 0
-            } else { user = try? await backend.currentUser() }
+            func value(_ flag: String) -> String? { arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
+            if let email = value("-debugEmail"), let password = value("-debugPassword") {
+                try? await backend.signIn(email: email, password: password)
+                tab = value("-debugTab") == "profile" ? 1 : 0
+            }
+            #endif
+            user = try? await backend.currentUser()
         }
     }
     private func courses(_ user: AppUser) -> some View {

@@ -27,3 +27,9 @@ enum SupabaseConfig {
 EOF
 xcodegen generate
 ```
+
+## Sessions and signing
+
+The session lives in the Keychain, which needs a signed build. Build and run through Xcode (or `xcodebuild` without `CODE_SIGNING_ALLOWED=NO`) to stay signed in across launches. Integration tests use an in-memory session store instead, so they work unsigned.
+
+Debug builds accept `-debugEmail <email> -debugPassword <password> [-debugTab profile]` launch arguments to sign in without typing (used for screenshots).
