@@ -29,6 +29,7 @@ struct CourseDetail: View {
     var onChanged: () -> Void = {}
     @State var kind: CourseFileKind = .presentation
     @State private var files: [CourseFile] = []
+    @State private var filesState: LoadState = .loading
     @State private var joinCode: String
     @State private var copied = false
     @State private var confirmingNewCode = debugFlag("-debugConfirmNewCode")
@@ -72,13 +73,15 @@ struct CourseDetail: View {
                 if let leaveError { Text(leaveError).font(.footnote).foregroundStyle(.red) }
                 if let importError { Text(importError).font(.footnote).foregroundStyle(.red) }
                 if let manageError { Text(manageError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("manageError") }
-                if visible.isEmpty { Text(kind == .presentation ? "No presentations yet." : "No exercises yet.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 20) }
+                if filesState == .loading { LoadingView(label: "Loading files…") }
+                else if filesState == .failed { StatusView(icon: "wifi.slash", title: "Could not load files", detail: "Check your connection and try again.") { Task { await loadFiles() } } }
+                else if visible.isEmpty { StatusView(icon: "doc", title: kind == .presentation ? "No presentations yet" : "No exercises yet", detail: teacher ? "Tap Upload to add one." : "Your Teacher has not added any yet.") }
                 else { VStack(spacing: 10) { ForEach(visible) { file in FileRow(file: file, opening: opening == file.id, onOpen: { open(file) }, onRename: teacher ? { renaming = file } : nil, onDelete: teacher ? { deleting = file } : nil) } } }
             }.padding(24)
-        }
+        }.contentMargins(.bottom, 24, for: .scrollContent)
         .frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas)
         .task {
-            files = (try? await backend.files(courseID: course.id)) ?? []
+            await loadFiles()
             #if DEBUG
             // Screenshot hook: `-debugOpenFile pdf|pptx` previews the first file of that type.
             let args = ProcessInfo.processInfo.arguments
@@ -126,6 +129,12 @@ struct CourseDetail: View {
                 files.insert(uploaded, at: 0); kind = uploaded.kind; onUploaded(uploaded); picked = nil
             }
         }
+    }
+
+    private func loadFiles() async {
+        filesState = .loading
+        do { files = try await backend.files(courseID: course.id); filesState = .loaded }
+        catch { filesState = .failed }
     }
 
     private func open(_ file: CourseFile) {
@@ -242,24 +251,29 @@ private struct RosterView: View {
     let course: Course
     let backend: any Backend
     @Environment(\.dismiss) private var dismiss
-    @State private var students: [RosterStudent] = []
+    @State private var students: [RosterStudent]?
     @State private var selected: RosterStudent?
     @State private var error: String?
     var body: some View {
         NavigationStack {
             Group {
-                if let error { ContentUnavailableView("Roster unavailable", systemImage: "person.2", description: Text(error)) }
-                else if students.isEmpty { ContentUnavailableView("No students yet", systemImage: "person.2") }
-                else { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } ; Spacer(); Button("Remove", role: .destructive) { selected = student }.buttonStyle(.borderless) } } }
+                if error != nil { StatusView(icon: "wifi.slash", title: "Could not load the Roster", detail: "Check your connection and try again.") { Task { await load() } } }
+                else if let students, students.isEmpty { StatusView(icon: "person.2", title: "No students yet", detail: "Share the Join Code so Students can join.") }
+                else if let students { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } ; Spacer(); Button("Remove", role: .destructive) { selected = student }.buttonStyle(.borderless) } } }
+                else { LoadingView(label: "Loading Roster…") }
             }
             .navigationTitle("Roster").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Remove \(selected?.name ?? "student")?", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), titleVisibility: .visible) {
-                Button("Remove Student", role: .destructive) { guard let selected else { return }; Task { do { try await backend.removeStudent(courseID: course.id, studentID: selected.studentID); students.removeAll { $0.id == selected.id }; self.selected = nil } catch { self.error = error.localizedDescription } } }
+                Button("Remove Student", role: .destructive) { guard let selected else { return }; Task { do { try await backend.removeStudent(courseID: course.id, studentID: selected.studentID); students?.removeAll { $0.id == selected.id }; self.selected = nil } catch { self.error = error.localizedDescription } } }
                 Button("Cancel", role: .cancel) { selected = nil }
             } message: { Text("They will lose access to this course and its files.") }
-            .task { do { students = try await backend.roster(courseID: course.id) } catch { self.error = error.localizedDescription } }
+            .task { await load() }
         }
+    }
+    private func load() async {
+        error = nil
+        do { students = try await backend.roster(courseID: course.id) } catch { self.error = error.localizedDescription }
     }
 }
 
