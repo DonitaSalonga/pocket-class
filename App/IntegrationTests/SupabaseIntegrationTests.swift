@@ -301,9 +301,49 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     #expect(seenByOther.isEmpty)
 }
 
+@Test func teacherManagesRosterAndStudentsCannotReadOrRemoveMembers() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster management"), description: nil)
+    let a = try await signedIn(.studentA)
+    let b = try await signedIn(.studentB)
+    _ = try await a.backend.joinCourse(code: course.joinCode)
+    _ = try await b.backend.joinCourse(code: course.joinCode)
+    let aID = try #require(await a.backend.currentUserID())
+    let bID = try #require(await b.backend.currentUserID())
+
+    // The Teacher sees names and join dates (server clock, so allow skew against this device).
+    let roster = try await teacher.backend.roster(courseID: course.id)
+    #expect(Set(roster.map(\.studentID)) == [aID, bID])
+    #expect(roster.contains { $0.name == PoolAccount.studentA.name })
+    #expect(roster.allSatisfy { abs($0.joinedAt.timeIntervalSinceNow) < 120 })
+
+    // A Student reads only the own row, cannot call the Roster, and cannot remove another Student.
+    let rawRoster: [Membership] = try await a.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(rawRoster.count == 1 && rawRoster.first?.studentID == aID)
+    #expect(try await a.backend.roster(courseID: course.id).isEmpty)
+    try await a.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id })
+    #expect(try await teacher.backend.roster(courseID: course.id).count == 2)
+
+    // The Teacher removes B: B loses the Course at the database, not only in a list.
+    try await teacher.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await teacher.backend.roster(courseID: course.id).map(\.studentID) == [aID])
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id } == false)
+    let byID: [Course] = try await b.raw.from("courses").select().eq("id", value: course.id.uuidString).execute().value
+    #expect(byID.isEmpty)
+
+    // A leaves and loses access too; another Teacher never sees the Roster.
+    try await a.backend.leaveCourse(courseID: course.id)
+    #expect(try await a.backend.myCourses().contains { $0.id == course.id } == false)
+    #expect(try await teacher.backend.roster(courseID: course.id).isEmpty)
+    let otherTeacher = try await signedIn(.teacherB)
+    #expect(try await otherTeacher.backend.roster(courseID: course.id).isEmpty)
+}
+
 private struct Membership: Decodable {
     let courseID: UUID
-    enum CodingKeys: String, CodingKey { case courseID = "course_id" }
+    let studentID: UUID
+    enum CodingKeys: String, CodingKey { case courseID = "course_id"; case studentID = "student_id" }
 }
 
 @Test func teacherRenamesAndDeletesOwnFileIncludingTheStoredObject() async throws {

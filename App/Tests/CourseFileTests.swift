@@ -54,6 +54,9 @@ private actor UploadSpy: Backend {
     func createCourse(name: String, description: String?) async throws -> Course { throw BackendError.notConfigured }
     func myCourses() async throws -> [Course] { [] }
     func joinCourse(code: String) async throws -> Course { throw BackendError.notConfigured }
+    func roster(courseID: UUID) async throws -> [RosterStudent] { [] }
+    func removeStudent(courseID: UUID, studentID: UUID) async throws {}
+    func leaveCourse(courseID: UUID) async throws {}
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         uploads += 1
         return CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: "p", fileType: "pdf", size: data.count, uploadedAt: .now)

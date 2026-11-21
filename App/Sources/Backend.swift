@@ -32,6 +32,13 @@ struct Course: Codable, Equatable, Identifiable, Sendable {
     let createdAt: Date
     enum CodingKeys: String, CodingKey { case id, name, description; case teacherID = "teacher_id"; case joinCode = "join_code"; case createdAt = "created_at" }
 }
+struct RosterStudent: Codable, Equatable, Identifiable, Sendable {
+    let studentID: UUID
+    let name: String
+    let joinedAt: Date
+    var id: UUID { studentID }
+    enum CodingKeys: String, CodingKey { case studentID = "student_id", name; case joinedAt = "joined_at" }
+}
 enum CourseFileKind: String, Codable, Sendable { case presentation, exercise }
 struct CourseFile: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
@@ -70,6 +77,9 @@ protocol Backend: Sendable {
     func createCourse(name: String, description: String?) async throws -> Course
     func myCourses() async throws -> [Course]
     func joinCourse(code: String) async throws -> Course
+    func roster(courseID: UUID) async throws -> [RosterStudent]
+    func removeStudent(courseID: UUID, studentID: UUID) async throws
+    func leaveCourse(courseID: UUID) async throws
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
     func allFiles() async throws -> [CourseFile]
@@ -93,7 +103,7 @@ extension Backend {
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: Set<String> = []; fileprivate var files: [CourseFile] = [] }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: [String: Date] = [:]; fileprivate var files: [CourseFile] = [] }
     private let store: Store
     init(store: Store = Store()) { self.store = store }
 
@@ -126,15 +136,31 @@ actor InMemoryBackend: Backend {
     func myCourses() -> [Course] {
         guard let user = currentUser() else { return [] }
         if user.role == .teacher { return store.courses.filter { $0.teacherID == user.id } }
-        return store.courses.filter { store.memberships.contains("\(user.id):\($0.id)") }
+        return store.courses.filter { store.memberships["\(user.id):\($0.id)"] != nil }
     }
     func joinCourse(code: String) throws -> Course {
         guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard let course = store.courses.first(where: { $0.joinCode.uppercased() == normalized }) else { throw BackendError.invalidJoinCode }
-        store.memberships.insert("\(user.id):\(course.id)")
+        store.memberships["\(user.id):\(course.id)", default: .now] = store.memberships["\(user.id):\(course.id)"] ?? .now
         return course
     }
+    func roster(courseID: UUID) throws -> [RosterStudent] {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { return [] }
+        return store.memberships.compactMap { key, joinedAt in
+            let parts = key.split(separator: ":")
+            guard parts.count == 2, parts[1] == Substring(courseID.uuidString), let id = UUID(uuidString: String(parts[0])), let account = store.accounts.values.first(where: { $0.user.id == id }) else { return nil }
+            return RosterStudent(studentID: id, name: account.user.name, joinedAt: joinedAt)
+        }
+    }
+    func removeStudent(courseID: UUID, studentID: UUID) throws {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { return }
+        store.memberships["\(studentID):\(courseID)"] = nil
+    }
+    func leaveCourse(courseID: UUID) throws {
+        guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
+        store.memberships["\(user.id):\(courseID)"] = nil
+}
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
