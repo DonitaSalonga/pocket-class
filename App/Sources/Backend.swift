@@ -17,7 +17,7 @@ func requestPasswordReset(email: String, backend: any Backend) async -> Password
 }
 
 enum UserRole: String, Codable, CaseIterable { case teacher, student }
-struct AppUser: Equatable, Identifiable {
+struct AppUser: Equatable, Identifiable, Codable {
     let id: UUID
     let name: String
     let email: String
@@ -89,6 +89,12 @@ protocol Backend: Sendable {
     func deleteCourse(_ course: Course) async throws
     /// Local file URL for a Course file. Served from the on-device cache when present, so opened files work offline.
     func download(file: CourseFile) async throws -> URL
+    /// Last successful Courses list, or nil when none was saved (or access ended and it was cleared). Metadata only, for offline.
+    func cachedCourses() async -> [Course]?
+    /// Last successful file list of a Course, same rules as `cachedCourses`.
+    func cachedFiles(courseID: UUID) async -> [CourseFile]?
+    /// True when the file was opened before, so it opens without internet.
+    func hasCachedCopy(_ file: CourseFile) async -> Bool
     /// Changes only the title (trimmed, never blank) and returns the updated file.
     func renameFile(id: UUID, title: String) async throws -> CourseFile
     /// Removes the stored object and the row, so the file disappears for everyone.
@@ -108,8 +114,35 @@ struct FileCache: Sendable {
     /// Drops cached Courses the user is no longer on (left, removed from the Roster).
     func keepOnly(_ courseIDs: [UUID]) {
         let keep = Set(courseIDs.map(\.uuidString))
-        for dir in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] where !keep.contains(dir.lastPathComponent) { try? FileManager.default.removeItem(at: dir) }
+        for dir in subdirectories(of: directory) where !keep.contains(dir.lastPathComponent) { try? FileManager.default.removeItem(at: dir) }
     }
+    /// Drops cached files that are not in `files`, within one Course or (nil) across all. Call only with a successful refresh.
+    func keepOnly(files: [CourseFile], inCourse course: UUID? = nil) {
+        let keep = Set(files.map(\.id.uuidString)), fm = FileManager.default
+        for courseDir in subdirectories(of: directory) where course.map({ $0.uuidString == courseDir.lastPathComponent }) ?? true {
+            for fileDir in subdirectories(of: courseDir) where !keep.contains(fileDir.lastPathComponent) { try? fm.removeItem(at: fileDir) }
+        }
+    }
+    // Snapshots are plain files (`courses.json`, `<course id>/files.json`) so the directory sweeps above skip them,
+    // and they disappear with the same removeCourse / keepOnly / clear calls as the cached files.
+    private func subdirectories(of url: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey])) ?? []).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+    }
+    private func save<T: Encodable>(_ value: T, to url: URL) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(value).write(to: url, options: .atomic)
+    }
+    private func load<T: Decodable>(_ type: T.Type, from url: URL) -> T? { (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(type, from: $0) } }
+    private var coursesURL: URL { directory.appendingPathComponent("courses.json") }
+    private func filesURL(_ course: UUID) -> URL { directory.appendingPathComponent(course.uuidString).appendingPathComponent("files.json") }
+    private var userURL: URL { directory.appendingPathComponent("user.json") }
+    func saveCourses(_ courses: [Course]) { save(courses, to: coursesURL) }
+    func courses() -> [Course]? { load([Course].self, from: coursesURL) }
+    func saveFiles(_ files: [CourseFile], course: UUID) { save(files, to: filesURL(course)) }
+    func files(course: UUID) -> [CourseFile]? { load([CourseFile].self, from: filesURL(course)) }
+    func saveUser(_ user: AppUser) { save(user, to: userURL) }
+    func user() -> AppUser? { load(AppUser.self, from: userURL) }
+    func hasCopy(_ file: CourseFile) -> Bool { ((try? FileManager.default.contentsOfDirectory(atPath: url(for: file).deletingLastPathComponent().path)) ?? []).isEmpty == false }
     func clear() { try? FileManager.default.removeItem(at: directory) }
     func remove(_ file: CourseFile) { try? FileManager.default.removeItem(at: url(for: file).deletingLastPathComponent()) }
     /// Cached copy if present, else `fetch` and keep it. A fetch failure with no copy propagates.
@@ -130,6 +163,9 @@ enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEma
 }
 
 extension Backend {
+    func cachedCourses() async -> [Course]? { nil }
+    func cachedFiles(courseID: UUID) async -> [CourseFile]? { nil }
+    func hasCachedCopy(_ file: CourseFile) async -> Bool { false }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile { throw BackendError.notConfigured }
     func files(courseID: UUID) async throws -> [CourseFile] { [] }
     func allFiles() async throws -> [CourseFile] { [] }
@@ -161,7 +197,7 @@ actor InMemoryBackend: Backend {
         guard let account = store.accounts[email.lowercased()], account.password == password else { throw BackendError.invalidCredentials }
         store.signedIn = account.user.id
     }
-    func signOut() { store.signedIn = nil }
+    func signOut() { cache.clear(); store.signedIn = nil }
     func currentUser() -> AppUser? { store.accounts.values.first { $0.user.id == store.signedIn }?.user }
     func currentUserID() -> UUID? { store.signedIn }
     func resetPassword(email: String) throws {}
@@ -176,10 +212,11 @@ actor InMemoryBackend: Backend {
         store.courses.append(course)
         return course
     }
-    func myCourses() -> [Course] {
+    func myCourses() throws -> [Course] {
+        if store.offline { throw URLError(.notConnectedToInternet) }
         guard let user = currentUser() else { return [] }
         let mine = user.role == .teacher ? store.courses.filter { $0.teacherID == user.id } : store.courses.filter { store.memberships["\(user.id):\($0.id)"] != nil }
-        cache.keepOnly(mine.map(\.id))
+        cache.keepOnly(mine.map(\.id)); cache.saveCourses(mine)
         return mine
     }
     func joinCourse(code: String) throws -> Course {
@@ -213,16 +250,28 @@ actor InMemoryBackend: Backend {
         store.files.append(file); store.blobs[file.id] = data; return file
     }
     func files(courseID: UUID) async throws -> [CourseFile] {
+        if store.offline { throw URLError(.notConnectedToInternet) }
+        let found: [CourseFile]
         // Like RLS, a Student off the Roster sees nothing rather than an error.
-        if let user = currentUser(), user.role == .student { return isMember(user, courseID) ? store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt } : [] }
-        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
-        return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+        if let user = currentUser(), user.role == .student { found = isMember(user, courseID) ? store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt } : [] }
+        else {
+            guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+            found = store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+        }
+        cache.keepOnly(files: found, inCourse: courseID); cache.saveFiles(found, course: courseID)
+        return found
     }
     func allFiles() async throws -> [CourseFile] {
-        guard let user = currentUser(), user.role == .teacher else { return [] }
-        let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
-        return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+        if store.offline { throw URLError(.notConnectedToInternet) }
+        guard let user = currentUser() else { return [] }
+        let mine = Set(user.role == .teacher ? store.courses.filter { $0.teacherID == user.id }.map(\.id) : store.courses.map(\.id).filter { isMember(user, $0) })
+        let found = store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+        cache.keepOnly(files: found)
+        return found
     }
+    func cachedCourses() async -> [Course]? { cache.courses() }
+    func cachedFiles(courseID: UUID) async -> [CourseFile]? { cache.files(course: courseID) }
+    func hasCachedCopy(_ file: CourseFile) async -> Bool { cache.hasCopy(file) }
     func regenerateJoinCode(courseID: UUID) async throws -> String {
         guard let user = currentUser(), let index = store.courses.firstIndex(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
         let old = store.courses[index]

@@ -19,9 +19,20 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func signOut() async throws { cache.clear(); try await client.auth.signOut() }
     func currentUser() async throws -> AppUser? {
         guard let user = client.auth.currentSession?.user else { return nil }
-        let profile: Profile = try await client.from("profiles").select().eq("id", value: user.id.uuidString).single().execute().value
-        return AppUser(id: user.id, name: profile.name, email: user.email ?? "", role: profile.role)
+        do {
+            try requireOnline()
+            let profile: Profile = try await client.from("profiles").select().eq("id", value: user.id.uuidString).single().execute().value
+            let result = AppUser(id: user.id, name: profile.name, email: user.email ?? "", role: profile.role)
+            cache.saveUser(result)
+            return result
+        } catch {
+            // Offline with a saved session: stay signed in on the last known profile.
+            if let saved = cache.user(), saved.id == user.id { return saved }
+            throw error
+        }
     }
+    /// Screenshot hook: `-debugOffline` makes every list refresh and download fail like a lost connection.
+    private func requireOnline() throws { if debugFlag("-debugOffline") { throw URLError(.notConnectedToInternet) } }
     func currentUserID() async throws -> UUID? { client.auth.currentSession?.user.id }
     func resetPassword(email: String) async throws { try await client.auth.resetPasswordForEmail(email) }
     func updateRole(_ role: UserRole) async throws {
@@ -37,8 +48,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
+        try requireOnline()
         let courses: [Course] = try await client.from("courses").select().order("created_at", ascending: false).execute().value
-        cache.keepOnly(courses.map(\.id))
+        cache.keepOnly(courses.map(\.id)); cache.saveCourses(courses)
         return courses
     }
     func joinCourse(code: String) async throws -> Course {
@@ -75,11 +87,20 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("course_files").insert(NewFile(course_id: courseID, kind: kind.rawValue, title: title, storage_path: path, file_type: ext, size: data.count)).select().single().execute().value
     }
     func files(courseID: UUID) async throws -> [CourseFile] {
-        try await client.from("course_files").select().eq("course_id", value: courseID.uuidString).order("uploaded_at", ascending: false).execute().value
+        try requireOnline()
+        let files: [CourseFile] = try await client.from("course_files").select().eq("course_id", value: courseID.uuidString).order("uploaded_at", ascending: false).execute().value
+        cache.keepOnly(files: files, inCourse: courseID); cache.saveFiles(files, course: courseID)
+        return files
     }
     func allFiles() async throws -> [CourseFile] {
-        try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+        try requireOnline()
+        let files: [CourseFile] = try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+        cache.keepOnly(files: files)
+        return files
     }
+    func cachedCourses() async -> [Course]? { cache.courses() }
+    func cachedFiles(courseID: UUID) async -> [CourseFile]? { cache.files(course: courseID) }
+    func hasCachedCopy(_ file: CourseFile) async -> Bool { cache.hasCopy(file) }
     func regenerateJoinCode(courseID: UUID) async throws -> String {
         struct Request: Encodable { let course_id_input: UUID }
         do {
@@ -107,7 +128,7 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         cache.removeCourse(course.id)
     }
     func download(file: CourseFile) async throws -> URL {
-        try await cache.open(file) { try await client.storage.from("course-files").download(path: file.storagePath) }
+        try await cache.open(file) { try requireOnline(); return try await client.storage.from("course-files").download(path: file.storagePath) }
     }
     func renameFile(id: UUID, title: String) async throws -> CourseFile {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -37,3 +37,13 @@ Supabase limits auth sign-ups and sign-ins per IP (about 30 per 5 minutes), so t
 The session lives in the Keychain, which needs a signed build. Build and run through Xcode (or `xcodebuild` without `CODE_SIGNING_ALLOWED=NO`) to stay signed in across launches. Integration tests use an in-memory session store instead, so they work unsigned.
 
 Debug builds accept `-debugEmail <email> -debugPassword <password> [-debugTab profile]` launch arguments to sign in without typing (used for screenshots).
+
+## Demo data
+
+`scripts/seed-demo.sh` creates (and can safely re-run) a demo Teacher "Ms. Rivera", a demo Student "Ana Cruz", the Course "Biology 101" with 2 Presentations and 2 Exercises from the sample files in `App/DebugSamples`, and puts Ana on its Roster. It needs `jq` and `curl`, uses only the anon key and normal sign-in, and keeps the demo passwords in `~/.config/project-2/demo-accounts.env` (mode 600, created on first run, never in the repo). To demo, run the seed, then sign in with the emails and passwords from that file. Debug builds can skip typing with `-debugEmail <email> -debugPassword <password>`.
+
+## Cleaning up test data
+
+Integration tests and screenshot runs leave Courses on the pool Teachers' accounts. Delete them from the Course screen (Delete Course) or run `scripts/cleanup-test-data.sh` (needs the linked supabase CLI, `jq`, `curl`). It prints counts, then with `--yes` deletes every Course (and its stored files) owned by the pool Teachers and the stale `test+*`/`qa+*@example.com` auth users. It never touches `pool-*` or demo accounts.
+
+Final walkthrough screenshots (demo accounts, Simulator) are in `docs/screenshots/final/`. Debug builds accept `-debugOffline` to simulate a lost connection (see `18-offline.png`).

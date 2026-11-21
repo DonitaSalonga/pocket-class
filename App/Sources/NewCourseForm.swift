@@ -6,11 +6,13 @@ import Observation
     var name = ""
     var description = ""
     var error: String?
+    var isSubmitting = false
 
     func submit(using backend: any Backend) async -> Course? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { error = "Enter a course name."; return nil }
         let note = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        isSubmitting = true; defer { isSubmitting = false }
         do {
             let course = try await backend.createCourse(name: trimmed, description: note.isEmpty ? nil : note)
             error = nil

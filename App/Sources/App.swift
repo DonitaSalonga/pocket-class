@@ -14,6 +14,9 @@ private struct RootView: View {
     @State private var user: AppUser?
     @State private var tab = 0
     @State private var coursesList: [Course] = []
+    @State private var coursesState: LoadState = .loading
+    @State private var coursesOffline = false
+    @State private var signingOut = false
     @State private var showingNewCourse = false
     @State private var showingJoin = false
     @State private var selectedCourse: Course?
@@ -48,7 +51,7 @@ private struct RootView: View {
             if let seed = value("-debugSeedCourses") { for name in seed.split(separator: ",") { _ = try? await backend.createCourse(name: String(name), description: nil) } }
             #endif
             user = try? await backend.currentUser()
-            coursesList = (try? await backend.myCourses()) ?? []
+            await loadCourses()
             #if DEBUG
             // `-debugUploadSamples` uploads bundled sample files to the first Course once; `-debugChip exercises` opens that list.
             if arguments.contains("-debugUploadSamples"), let course = coursesList.first, ((try? await backend.files(courseID: course.id)) ?? []).isEmpty {
@@ -58,12 +61,13 @@ private struct RootView: View {
                 }
             }
             #endif
-            filesList = (try? await backend.allFiles()) ?? []
+            if let all = try? await backend.allFiles() { filesList = all }
+            else { filesList = []; for course in coursesList { filesList += await backend.cachedFiles(courseID: course.id) ?? [] } }
             #if DEBUG
             if value("-debugChip") == "exercises" { debugKind = .exercise }
             // An optional name after the flag picks that Course; shared pool Teachers collect Courses from other tests.
             if arguments.contains("-debugOpenCourse") { selectedCourse = value("-debugOpenCourse").flatMap { name in coursesList.first { $0.name == name } } ?? coursesList.first }
-            if debugJoinCode != nil { showingJoin = true }
+            if debugJoinCode != nil || arguments.contains("-debugOpenJoin") { showingJoin = true }
             #endif
         }
     }
@@ -75,21 +79,32 @@ private struct RootView: View {
                 avatar(user, size: 48)
             }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
-            if coursesList.isEmpty { Spacer(); Text(user.role == .teacher ? "Your courses will appear here." : "Courses you join will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity); Spacer() }
-            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index, counts: CourseFileCounts(files: filesList).label(for: course.id)) }.buttonStyle(.plain) } } } }
+            if coursesOffline { OfflineBanner(text: "Offline: showing saved courses") }
+            if coursesState == .loading && coursesList.isEmpty { Spacer(); LoadingView(label: "Loading courses…"); Spacer() }
+            else if coursesState == .failed && coursesList.isEmpty { Spacer(); StatusView(icon: "wifi.slash", title: "Could not load courses", detail: "Check your connection and try again.") { Task { await loadCourses() } }; Spacer() }
+            else if coursesList.isEmpty { Spacer(); StatusView(icon: "books.vertical", title: user.role == .teacher ? "No courses yet" : "No courses joined", detail: user.role == .teacher ? "Tap + New Course to make your first one." : "Tap Join with code and enter the code from your Teacher."); Spacer() }
+            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index, counts: CourseFileCounts(files: filesList).label(for: course.id)) }.buttonStyle(.plain) } }.padding(.bottom, 4) }.contentMargins(.bottom, 8, for: .scrollContent).scrollClipDisabled() }
             Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } else { showingJoin = true } }.buttonStyle(PrimaryButton())
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
+    }
+    private func loadCourses() async {
+        do { coursesList = try await backend.myCourses(); coursesState = .loaded; coursesOffline = false }
+        catch {
+            // Offline: show the last known Courses instead of an error.
+            if let saved = await backend.cachedCourses() { coursesList = saved; coursesOffline = true; coursesState = .loaded }
+            else { coursesState = .failed }
+        }
     }
     private func profile(_ user: AppUser) -> some View {
         VStack(spacing: 16) {
             avatar(user, size: 88).padding(.top, 80)
             Text(user.name).font(.title2.bold()); Text(user.role.rawValue.capitalized).foregroundStyle(.secondary)
-            Button("Sign out") { Task { try? await backend.signOut(); self.user = nil } }.buttonStyle(PrimaryButton())
+            Button { Task { signingOut = true; try? await backend.signOut(); signingOut = false; self.user = nil } } label: { if signingOut { ProgressView().tint(.white) } else { Text("Sign out") } }.buttonStyle(PrimaryButton()).disabled(signingOut)
             Spacer()
         }.padding(24).frame(maxWidth: .infinity).background(Style.canvas)
     }
     private func avatar(_ user: AppUser, size: CGFloat) -> some View {
-        Text(user.name.split(separator: " ").compactMap(\.first).map(String.init).joined()).font(.headline.bold()).foregroundStyle(Style.green).frame(width: size, height: size).background(Style.green.opacity(0.12), in: Circle()).accessibilityLabel("Profile avatar")
+        Text(Initials.of(user.name)).font(.headline.bold()).foregroundStyle(Style.green).frame(width: size, height: size).background(Style.green.opacity(0.12), in: Circle()).accessibilityLabel("Profile avatar")
     }
     private func tabButton(_ title: String, icon: String, index: Int) -> some View {
         Button { tab = index } label: { Label(title, systemImage: icon).font(.subheadline.bold()).foregroundStyle(tab == index ? .white : .secondary).padding(.horizontal, 19).padding(.vertical, 13).background(tab == index ? Style.green : .clear, in: Capsule()) }.accessibilityLabel(title)
@@ -109,12 +124,13 @@ private let debugForgotPasswordEmail: String? = {
 private struct AuthView: View {
     let backend: any Backend
     let onSignedIn: (AppUser?) -> Void
-    @State private var signup = debugForgotPasswordEmail == nil
+    @State private var signup = debugForgotPasswordEmail == nil && !debugFlag("-debugSignIn")
     @State private var role: UserRole = .teacher
     @State private var name = ""
     @State private var email = debugForgotPasswordEmail ?? ""
     @State private var password = ""
     @State private var error: String?
+    @State private var busy = false
     @State private var showingReset = debugForgotPasswordEmail != nil
     var body: some View {
         ZStack {
@@ -130,7 +146,7 @@ private struct AuthView: View {
                     HStack { roleCard(.teacher); roleCard(.student) }
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
-                Button(signup ? "Create account" : "Sign in") { submit() }.buttonStyle(PrimaryButton())
+                Button { submit() } label: { if busy { ProgressView().tint(.white) } else { Text(signup ? "Create account" : "Sign in") } }.buttonStyle(PrimaryButton()).disabled(busy)
                 if !signup { Button("Forgot password?") { showingReset = true }.frame(maxWidth: .infinity).foregroundStyle(Style.green) }
                 Button(signup ? "Already have an account? Sign in" : "New here? Create account") { signup.toggle() }.frame(maxWidth: .infinity).foregroundStyle(Style.green)
             }.padding(24) }
@@ -144,6 +160,7 @@ private struct AuthView: View {
         }.accessibilityAddTraits(role == value ? .isSelected : [])
     }
     private func submit() { Task {
+        busy = true; defer { busy = false }
         do {
             if signup { try await backend.signUp(email: email, password: password, name: name, role: role) }
             else { try await backend.signIn(email: email, password: password) }
@@ -214,11 +231,12 @@ private struct NewCourseSheet: View {
         }
         .navigationTitle("New Course").navigationBarTitleDisplayMode(.inline).toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { if let course = await form.submit(using: backend) { onCreated(course) } } } }
+            ToolbarItem(placement: .confirmationAction) { if form.isSubmitting { ProgressView() } else { Button("Create") { Task { if let course = await form.submit(using: backend) { onCreated(course) } } } } }
         }
     } }
 }
 
+/// Screenshot hooks: `-debugSignIn` starts on Sign in, `-debugOpenJoin` opens the join sheet with a sample code typed but not sent, `-debugUploadSheet` opens the upload sheet.
 /// Screenshot hooks: `-debugOpenRoster` opens the Roster, `-debugConfirmLeave` asks to leave, once a Course is open.
 func debugFlag(_ flag: String) -> Bool {
     #if DEBUG
@@ -251,9 +269,9 @@ private struct JoinCourseSheet: View {
         }
         .navigationTitle("Join with code").navigationBarTitleDisplayMode(.inline).toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) { Button("Join", action: join) }
+            ToolbarItem(placement: .confirmationAction) { if form.isSubmitting { ProgressView() } else { Button("Join", action: join) } }
         }
-        .task { if let debugCode { form.code = debugCode; join() } }
+        .task { if let debugCode { form.code = debugCode; join() } else if debugFlag("-debugOpenJoin") { form.code = "K7M2QX" } }
     } }
 }
 

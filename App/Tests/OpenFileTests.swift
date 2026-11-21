@@ -111,3 +111,113 @@ private func courseWithFile(store: InMemoryBackend.Store, cache: FileCache, data
     #expect(try await student.myCourses().isEmpty)
     #expect(!FileManager.default.fileExists(atPath: url.path))
 }
+
+/// Student with a cached copy of `file`; the Teacher then changes the Course behind their back.
+private func cachedStudent(_ store: InMemoryBackend.Store) async throws -> (teacher: InMemoryBackend, student: InMemoryBackend, course: Course, file: CourseFile, url: URL) {
+    let (teacher, course, file) = try await courseWithFile(store: store, cache: tempCache())
+    let student = InMemoryBackend(store: store, cache: tempCache())
+    try await student.signUp(email: "s@example.com", password: "secret", name: "S", role: .student)
+    _ = try await student.joinCourse(code: course.joinCode)
+    let url = try await student.download(file: file)
+    return (teacher, student, course, file, url)
+}
+
+@Test func fileListRefreshClearsCachedCopiesOfDeletedFilesAndKeepsTheRest() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, course, file, url) = try await cachedStudent(store)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    let other = try await teacher.uploadFile(courseID: course.id, kind: .exercise, title: "Sheet", data: Data("x".utf8), fileName: "sheet.pdf")
+    try await student.signIn(email: "s@example.com", password: "secret")
+    let otherURL = try await student.download(file: other)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.deleteFile(file)
+    try await student.signIn(email: "s@example.com", password: "secret")
+    _ = try await student.files(courseID: course.id)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    #expect(FileManager.default.fileExists(atPath: otherURL.path))
+}
+
+@Test func allFilesRefreshClearsCachedCopiesOfDeletedFiles() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, _, file, url) = try await cachedStudent(store)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.deleteFile(file)
+    try await student.signIn(email: "s@example.com", password: "secret")
+    #expect(try await student.allFiles().isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}
+
+@Test func deletedCourseCachedFilesAreClearedWhenCoursesRefresh() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, course, _, url) = try await cachedStudent(store)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.deleteCourse(course)
+    try await student.signIn(email: "s@example.com", password: "secret")
+    #expect(try await student.myCourses().isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}
+
+@Test func failedRefreshKeepsEveryCachedCopy() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, course, file, url) = try await cachedStudent(store)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.deleteFile(file)
+    try await student.signIn(email: "s@example.com", password: "secret")
+    store.offline = true
+    await #expect(throws: (any Error).self) { try await student.myCourses() }
+    await #expect(throws: (any Error).self) { try await student.files(courseID: course.id) }
+    await #expect(throws: (any Error).self) { try await student.allFiles() }
+    #expect(FileManager.default.fileExists(atPath: url.path))
+}
+
+@Test func offlineRefreshFailsButLastSnapshotStaysAvailable() async throws {
+    let store = InMemoryBackend.Store()
+    let (_, student, course, file, _) = try await cachedStudent(store)
+    #expect(try await student.myCourses().map(\.id) == [course.id])
+    #expect(try await student.files(courseID: course.id).map(\.id) == [file.id])
+    store.offline = true
+    await #expect(throws: (any Error).self) { try await student.files(courseID: course.id) }
+    #expect(await student.cachedCourses()?.map(\.id) == [course.id])
+    #expect(await student.cachedFiles(courseID: course.id)?.map(\.id) == [file.id])
+}
+
+@Test func onlyRowsWithACachedCopyOpenOffline() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, course, file, url) = try await cachedStudent(store)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    let other = try await teacher.uploadFile(courseID: course.id, kind: .exercise, title: "Sheet", data: Data("x".utf8), fileName: "sheet.pdf")
+    try await student.signIn(email: "s@example.com", password: "secret")
+    _ = try await student.files(courseID: course.id)
+    store.offline = true
+    #expect(await student.hasCachedCopy(file))
+    #expect(try await student.download(file: file) == url)
+    #expect(await !student.hasCachedCopy(other))
+    await #expect(throws: (any Error).self) { try await student.download(file: other) }
+}
+
+@Test func snapshotIsClearedWhenTheStudentLeavesOrSignsOut() async throws {
+    let store = InMemoryBackend.Store()
+    let (_, student, course, _, _) = try await cachedStudent(store)
+    _ = try await student.myCourses(); _ = try await student.files(courseID: course.id)
+    try await student.leaveCourse(courseID: course.id)
+    #expect(await student.cachedFiles(courseID: course.id) == nil)
+    _ = try await student.joinCourse(code: course.joinCode)
+    _ = try await student.myCourses(); _ = try await student.files(courseID: course.id)
+    #expect(await student.cachedCourses() != nil)
+    try await student.signOut()
+    #expect(await student.cachedCourses() == nil)
+    #expect(await student.cachedFiles(courseID: course.id) == nil)
+}
+
+@Test func snapshotIsClearedWhenRemovedFromTheRosterOrTheCourseIsDeleted() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, student, course, _, _) = try await cachedStudent(store)
+    let studentID = try #require(await student.currentUserID())
+    _ = try await student.myCourses(); _ = try await student.files(courseID: course.id)
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.removeStudent(courseID: course.id, studentID: studentID)
+    try await student.signIn(email: "s@example.com", password: "secret")
+    #expect(try await student.myCourses().isEmpty)
+    #expect(await student.cachedFiles(courseID: course.id) == nil)
+    #expect(await student.cachedCourses()?.isEmpty == true)
+}
