@@ -7,7 +7,7 @@ import Testing
     try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
     let first = try await backend.createCourse(name: "Biology", description: nil)
     let second = try await backend.createCourse(name: "Chemistry", description: "Lab")
-    #expect(await backend.myCourses().count == 2)
+    #expect(try await backend.myCourses().count == 2)
     #expect(first.joinCode.count == 6 && first.joinCode.allSatisfy { "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".contains($0) })
     #expect(first.joinCode != second.joinCode)
 }
@@ -16,7 +16,7 @@ import Testing
     let backend = InMemoryBackend()
     try await backend.signUp(email: "student@example.com", password: "correct horse", name: "Mia Chen", role: .student)
     await #expect(throws: BackendError.notATeacher) { try await backend.createCourse(name: "Biology", description: nil) }
-    #expect(await backend.myCourses().isEmpty)
+    #expect(try await backend.myCourses().isEmpty)
 }
 
 @Test func teachersCannotSeeEachOthersCourses() async throws {
@@ -27,7 +27,7 @@ import Testing
     try await a.signOut()
     let b = InMemoryBackend(store: store)
     try await b.signUp(email: "b@example.com", password: "correct horse", name: "Teacher B", role: .teacher)
-    #expect(await b.myCourses().isEmpty)
+    #expect(try await b.myCourses().isEmpty)
 }
 
 @Test func signOutClearsSession() async throws {
@@ -97,7 +97,7 @@ private actor FailingBackend: Backend {
     form.name = "   "
     #expect(await form.submit(using: backend) == nil)
     #expect(form.error == "Enter a course name.")
-    #expect(await backend.myCourses().isEmpty)
+    #expect(try await backend.myCourses().isEmpty)
 }
 
 @MainActor @Test func newCourseTrimsNameAndClearsError() async throws {
@@ -193,14 +193,14 @@ private func teacherCourseAndStudent() async throws -> (course: Course, student:
     try await setup.student.signIn(email: "s@example.com", password: "correct horse")
     let joined = try await setup.student.joinCourse(code: "  \(setup.course.joinCode.lowercased()) \n")
     #expect(joined == setup.course)
-    #expect(await setup.student.myCourses() == [setup.course])
+    #expect(try await setup.student.myCourses() == [setup.course])
 }
 
 @Test func wrongJoinCodeIsRefusedWithTypedError() async throws {
     let setup = try await teacherCourseAndStudent()
     try await setup.student.signIn(email: "s@example.com", password: "correct horse")
     await #expect(throws: BackendError.invalidJoinCode) { try await setup.student.joinCourse(code: "ZZZZZZ") }
-    #expect(await setup.student.myCourses().isEmpty)
+    #expect(try await setup.student.myCourses().isEmpty)
 }
 
 @Test func joiningTwiceIsANoOp() async throws {
@@ -209,7 +209,7 @@ private func teacherCourseAndStudent() async throws -> (course: Course, student:
     _ = try await setup.student.joinCourse(code: setup.course.joinCode)
     let again = try await setup.student.joinCourse(code: setup.course.joinCode)
     #expect(again == setup.course)
-    #expect(await setup.student.myCourses().count == 1)
+    #expect(try await setup.student.myCourses().count == 1)
 }
 
 @Test func teacherCanViewRosterRemoveStudentAndStudentCanLeave() async throws {
@@ -223,10 +223,10 @@ private func teacherCourseAndStudent() async throws -> (course: Course, student:
     #expect(roster.first?.joinedAt != .distantPast)
     try await setup.teacher.removeStudent(courseID: setup.course.id, studentID: studentID)
     try await setup.student.signIn(email: "s@example.com", password: "correct horse")
-    #expect(await setup.student.myCourses().isEmpty)
+    #expect(try await setup.student.myCourses().isEmpty)
     _ = try await setup.student.joinCourse(code: setup.course.joinCode)
     try await setup.student.leaveCourse(courseID: setup.course.id)
-    #expect(await setup.student.myCourses().isEmpty)
+    #expect(try await setup.student.myCourses().isEmpty)
 }
 
 @Test func teacherCannotJoinACourse() async throws {
@@ -239,7 +239,7 @@ private func teacherCourseAndStudent() async throws -> (course: Course, student:
     try await setup.student.signIn(email: "s@example.com", password: "correct horse")
     _ = try await setup.student.joinCourse(code: setup.course.joinCode)
     try await setup.otherStudent.signIn(email: "o@example.com", password: "correct horse")
-    #expect(await setup.otherStudent.myCourses().isEmpty)
+    #expect(try await setup.otherStudent.myCourses().isEmpty)
 }
 
 @MainActor @Test func joinFormUppercasesAndTrimsCodeAndShowsWrongCodeError() async throws {

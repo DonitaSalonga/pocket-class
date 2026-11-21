@@ -75,10 +75,14 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("course_files").insert(NewFile(course_id: courseID, kind: kind.rawValue, title: title, storage_path: path, file_type: ext, size: data.count)).select().single().execute().value
     }
     func files(courseID: UUID) async throws -> [CourseFile] {
-        try await client.from("course_files").select().eq("course_id", value: courseID.uuidString).order("uploaded_at", ascending: false).execute().value
+        let files: [CourseFile] = try await client.from("course_files").select().eq("course_id", value: courseID.uuidString).order("uploaded_at", ascending: false).execute().value
+        cache.keepOnly(files: files, inCourse: courseID)
+        return files
     }
     func allFiles() async throws -> [CourseFile] {
-        try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+        let files: [CourseFile] = try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
+        cache.keepOnly(files: files)
+        return files
     }
     func regenerateJoinCode(courseID: UUID) async throws -> String {
         struct Request: Encodable { let course_id_input: UUID }

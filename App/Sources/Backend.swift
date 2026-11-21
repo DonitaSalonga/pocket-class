@@ -110,6 +110,13 @@ struct FileCache: Sendable {
         let keep = Set(courseIDs.map(\.uuidString))
         for dir in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] where !keep.contains(dir.lastPathComponent) { try? FileManager.default.removeItem(at: dir) }
     }
+    /// Drops cached files that are not in `files`, within one Course or (nil) across all. Call only with a successful refresh.
+    func keepOnly(files: [CourseFile], inCourse course: UUID? = nil) {
+        let keep = Set(files.map(\.id.uuidString)), fm = FileManager.default
+        for courseDir in (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] where course.map({ $0.uuidString == courseDir.lastPathComponent }) ?? true {
+            for fileDir in (try? fm.contentsOfDirectory(at: courseDir, includingPropertiesForKeys: nil)) ?? [] where !keep.contains(fileDir.lastPathComponent) { try? fm.removeItem(at: fileDir) }
+        }
+    }
     func clear() { try? FileManager.default.removeItem(at: directory) }
     func remove(_ file: CourseFile) { try? FileManager.default.removeItem(at: url(for: file).deletingLastPathComponent()) }
     /// Cached copy if present, else `fetch` and keep it. A fetch failure with no copy propagates.
@@ -176,7 +183,8 @@ actor InMemoryBackend: Backend {
         store.courses.append(course)
         return course
     }
-    func myCourses() -> [Course] {
+    func myCourses() throws -> [Course] {
+        if store.offline { throw URLError(.notConnectedToInternet) }
         guard let user = currentUser() else { return [] }
         let mine = user.role == .teacher ? store.courses.filter { $0.teacherID == user.id } : store.courses.filter { store.memberships["\(user.id):\($0.id)"] != nil }
         cache.keepOnly(mine.map(\.id))
@@ -213,15 +221,24 @@ actor InMemoryBackend: Backend {
         store.files.append(file); store.blobs[file.id] = data; return file
     }
     func files(courseID: UUID) async throws -> [CourseFile] {
+        if store.offline { throw URLError(.notConnectedToInternet) }
+        let found: [CourseFile]
         // Like RLS, a Student off the Roster sees nothing rather than an error.
-        if let user = currentUser(), user.role == .student { return isMember(user, courseID) ? store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt } : [] }
-        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
-        return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+        if let user = currentUser(), user.role == .student { found = isMember(user, courseID) ? store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt } : [] }
+        else {
+            guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
+            found = store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
+        }
+        cache.keepOnly(files: found, inCourse: courseID)
+        return found
     }
     func allFiles() async throws -> [CourseFile] {
-        guard let user = currentUser(), user.role == .teacher else { return [] }
-        let mine = Set(store.courses.filter { $0.teacherID == user.id }.map(\.id))
-        return store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+        if store.offline { throw URLError(.notConnectedToInternet) }
+        guard let user = currentUser() else { return [] }
+        let mine = Set(user.role == .teacher ? store.courses.filter { $0.teacherID == user.id }.map(\.id) : store.courses.map(\.id).filter { isMember(user, $0) })
+        let found = store.files.filter { mine.contains($0.courseID) }.sorted { $0.uploadedAt > $1.uploadedAt }
+        cache.keepOnly(files: found)
+        return found
     }
     func regenerateJoinCode(courseID: UUID) async throws -> String {
         guard let user = currentUser(), let index = store.courses.firstIndex(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
