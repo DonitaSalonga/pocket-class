@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Project2
+@testable import PocketClass
 
 @Test func teacherUploadsAndListsCourseFilesNewestFirst() async throws {
     let backend = InMemoryBackend()

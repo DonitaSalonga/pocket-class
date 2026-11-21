@@ -1,6 +1,6 @@
 import SwiftUI
 
-@main struct Project2App: App {
+@main struct PocketClassApp: App {
     var body: some Scene { WindowGroup { RootView().preferredColorScheme(.light) } }
 }
 

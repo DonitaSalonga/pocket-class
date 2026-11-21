@@ -1,5 +1,5 @@
 import Testing
-@testable import Project2
+@testable import PocketClass
 
 @Test func initialsAreUppercaseAndLimitedToTwoLetters() {
     #expect(Initials.of("Pool studentA") == "PS")

@@ -1,4 +1,4 @@
-# project-2
+# Pocket Class
 
 A school-project iPhone app where teachers share presentation and exercise files with the students in their courses.
 

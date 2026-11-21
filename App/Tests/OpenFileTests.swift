@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Project2
+@testable import PocketClass
 
 private func tempCache() -> FileCache { FileCache(directory: FileManager.default.temporaryDirectory.appendingPathComponent("cache-\(UUID())")) }
 

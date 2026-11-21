@@ -1,9 +1,9 @@
 import Foundation
 import Supabase
-@testable import Project2
+@testable import PocketClass
 
 /// Reusable Supabase accounts so test runs do not hit the auth sign-up rate limit.
-/// Passwords live outside the repo in `~/.config/project-2/test-accounts.env` (created on first use, mode 600).
+/// Passwords live outside the repo in `~/.config/pocket-class/test-accounts.env` (created on first use, mode 600).
 enum PoolAccount: String, CaseIterable {
     case teacherA, teacherB, studentA, studentB, outsider
     var role: UserRole { rawValue.hasPrefix("teacher") ? .teacher : .student }
@@ -47,7 +47,7 @@ actor TestAccounts {
     }
 
     private func password(for account: PoolAccount) throws -> String {
-        let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SIMULATOR_HOST_HOME"] ?? NSHomeDirectory()).appending(path: ".config/project-2/test-accounts.env")
+        let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SIMULATOR_HOST_HOME"] ?? NSHomeDirectory()).appending(path: ".config/pocket-class/test-accounts.env")
         if passwords == nil {
             let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             passwords = Dictionary(text.split(separator: "\n").compactMap { line in
@@ -69,7 +69,7 @@ actor TestAccounts {
 enum PoolError: Error, CustomStringConvertible {
     case cannotSignIn(String)
     var description: String {
-        switch self { case .cannotSignIn(let email): "Cannot sign in \(email). If ~/.config/project-2/test-accounts.env was lost, delete that user in the Supabase dashboard and rerun." }
+        switch self { case .cannotSignIn(let email): "Cannot sign in \(email). If ~/.config/pocket-class/test-accounts.env was lost, delete that user in the Supabase dashboard and rerun." }
     }
 }
 

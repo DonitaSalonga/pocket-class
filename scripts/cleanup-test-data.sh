@@ -4,7 +4,7 @@
 # Needs jq, curl and a linked supabase CLI (see README). Prints counts first; pass --yes to delete.
 set -euo pipefail
 
-CONFIG_DIR="$HOME/.config/project-2"
+CONFIG_DIR="$HOME/.config/pocket-class"
 set -a; source "$CONFIG_DIR/supabase.env"; set +a
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SQL="$ROOT/scripts/cleanup-test-data.sql"

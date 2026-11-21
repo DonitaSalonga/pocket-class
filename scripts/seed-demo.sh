@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Seeds the demo data: Teacher "Ms. Rivera", Student "Ana Cruz", Course "Biology 101"
 # with 2 Presentations and 2 Exercises, and Ana on its Roster. Safe to run again.
-# Uses only the anon key and normal sign-in. Passwords live in ~/.config/project-2/demo-accounts.env.
+# Uses only the anon key and normal sign-in. Passwords live in ~/.config/pocket-class/demo-accounts.env.
 set -euo pipefail
 
-CONFIG_DIR="$HOME/.config/project-2"
+CONFIG_DIR="$HOME/.config/pocket-class"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SAMPLES="$ROOT/App/DebugSamples"
 COURSE_NAME="Biology 101"

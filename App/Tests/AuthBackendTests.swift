@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Project2
+@testable import PocketClass
 
 @Test func teacherCreatesAndListsOwnCoursesWithReadableUniqueCodes() async throws {
     let backend = InMemoryBackend()

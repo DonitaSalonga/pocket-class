@@ -1,7 +1,7 @@
 import Foundation
 import Supabase
 import Testing
-@testable import Project2
+@testable import PocketClass
 
 /// Stands in for the Keychain, which is unavailable in the unsigned test host; sharing one instance simulates a relaunch.
 final class MemoryStorage: AuthLocalStorage, @unchecked Sendable {

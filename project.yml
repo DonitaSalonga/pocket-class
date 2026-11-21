@@ -1,6 +1,6 @@
-name: Project2
+name: PocketClass
 options:
-  bundleIdPrefix: com.donita.project2
+  bundleIdPrefix: com.donita.pocketclass
   deploymentTarget:
     iOS: "18.0"
 packages:
@@ -8,7 +8,7 @@ packages:
     url: https://github.com/supabase/supabase-swift
     from: 2.0.0
 targets:
-  Project2:
+  PocketClass:
     type: application
     platform: iOS
     # DebugSamples are two tiny real files used by the DEBUG `-debugUploadSamples` launch argument; Release leaves them out.
@@ -19,48 +19,49 @@ targets:
           EXCLUDED_SOURCE_FILE_NAMES: sample.pdf sample.pptx
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass
+        INFOPLIST_KEY_CFBundleDisplayName: Pocket Class
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         TARGETED_DEVICE_FAMILY: 1
     dependencies:
       - package: Supabase
-  Project2Tests:
+  PocketClassTests:
     type: bundle.unit-test
     platform: iOS
     sources: [App/Tests]
     dependencies:
-      - target: Project2
+      - target: PocketClass
       - package: Supabase
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2.tests
-  Project2IntegrationTests:
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass.tests
+  PocketClassIntegrationTests:
     type: bundle.unit-test
     platform: iOS
     sources: [App/IntegrationTests]
     dependencies:
-      - target: Project2
+      - target: PocketClass
       - package: Supabase
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2.integration-tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.pocketclass.integration-tests
 schemes:
-  Project2:
+  PocketClass:
     build:
       targets:
-        Project2: all
-        Project2Tests: [test]
+        PocketClass: all
+        PocketClassTests: [test]
     test:
       targets:
-        - Project2Tests
-  Project2Integration:
+        - PocketClassTests
+  PocketClassIntegration:
     build:
       targets:
-        Project2: all
-        Project2IntegrationTests: [test]
+        PocketClass: all
+        PocketClassIntegrationTests: [test]
     test:
       targets:
-        - Project2IntegrationTests
+        - PocketClassIntegrationTests

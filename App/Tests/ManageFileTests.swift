@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import Project2
+@testable import PocketClass
 
 private func teacherWithFile() async throws -> (store: InMemoryBackend.Store, backend: InMemoryBackend, course: Course, file: CourseFile) {
     let store = InMemoryBackend.Store()

@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "BF297A854847287FF9643253"
-               BuildableName = "Project2.app"
-               BlueprintName = "Project2"
-               ReferencedContainer = "container:Project2.xcodeproj">
+               BlueprintIdentifier = "B7215E95BB380B4A5F0DAFA2"
+               BuildableName = "PocketClass.app"
+               BlueprintName = "PocketClass"
+               ReferencedContainer = "container:PocketClass.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -29,10 +29,10 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "1CE88A5176E6F43C5EAC4FC7"
-               BuildableName = "Project2IntegrationTests.xctest"
-               BlueprintName = "Project2IntegrationTests"
-               ReferencedContainer = "container:Project2.xcodeproj">
+               BlueprintIdentifier = "C8AEA299B3C2794F6EA68121"
+               BuildableName = "PocketClassTests.xctest"
+               BlueprintName = "PocketClassTests"
+               ReferencedContainer = "container:PocketClass.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,10 +46,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BF297A854847287FF9643253"
-            BuildableName = "Project2.app"
-            BlueprintName = "Project2"
-            ReferencedContainer = "container:Project2.xcodeproj">
+            BlueprintIdentifier = "B7215E95BB380B4A5F0DAFA2"
+            BuildableName = "PocketClass.app"
+            BlueprintName = "PocketClass"
+            ReferencedContainer = "container:PocketClass.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -58,10 +58,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "1CE88A5176E6F43C5EAC4FC7"
-               BuildableName = "Project2IntegrationTests.xctest"
-               BlueprintName = "Project2IntegrationTests"
-               ReferencedContainer = "container:Project2.xcodeproj">
+               BlueprintIdentifier = "C8AEA299B3C2794F6EA68121"
+               BuildableName = "PocketClassTests.xctest"
+               BlueprintName = "PocketClassTests"
+               ReferencedContainer = "container:PocketClass.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -82,10 +82,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BF297A854847287FF9643253"
-            BuildableName = "Project2.app"
-            BlueprintName = "Project2"
-            ReferencedContainer = "container:Project2.xcodeproj">
+            BlueprintIdentifier = "B7215E95BB380B4A5F0DAFA2"
+            BuildableName = "PocketClass.app"
+            BlueprintName = "PocketClass"
+            ReferencedContainer = "container:PocketClass.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -99,10 +99,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "BF297A854847287FF9643253"
-            BuildableName = "Project2.app"
-            BlueprintName = "Project2"
-            ReferencedContainer = "container:Project2.xcodeproj">
+            BlueprintIdentifier = "B7215E95BB380B4A5F0DAFA2"
+            BuildableName = "PocketClass.app"
+            BlueprintName = "PocketClass"
+            ReferencedContainer = "container:PocketClass.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
