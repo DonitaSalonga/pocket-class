@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/pocket-class-logo.png" alt="Pocket Class logo: a graduation cap over an open book in a pocket" width="360">
+  <img src="docs/assets/pocket-class-logo-transparent.png" alt="Pocket Class logo: a graduation cap over an open book in a pocket" width="360">
 </p>
 
 <h1 align="center">Pocket Class</h1>
