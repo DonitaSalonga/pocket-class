@@ -35,6 +35,7 @@ private struct RootView: View {
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
             let arguments = ProcessInfo.processInfo.arguments
             func value(_ flag: String) -> String? { arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
+            if debugForgotPasswordEmail != nil { try? await backend.signOut() }
             if let email = value("-debugEmail"), let password = value("-debugPassword") {
                 try? await backend.signIn(email: email, password: password)
                 tab = value("-debugTab") == "profile" ? 1 : 0
@@ -78,15 +79,26 @@ private struct RootView: View {
     }
 }
 
+/// Screenshot hook: `-debugForgotPassword <email>` opens the reset sheet with that email and submits it.
+private let debugForgotPasswordEmail: String? = {
+    #if DEBUG
+    let arguments = ProcessInfo.processInfo.arguments
+    return arguments.firstIndex(of: "-debugForgotPassword").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+    #else
+    nil
+    #endif
+}()
+
 private struct AuthView: View {
     let backend: any Backend
     let onSignedIn: (AppUser?) -> Void
-    @State private var signup = true
+    @State private var signup = debugForgotPasswordEmail == nil
     @State private var role: UserRole = .teacher
     @State private var name = ""
-    @State private var email = ""
+    @State private var email = debugForgotPasswordEmail ?? ""
     @State private var password = ""
     @State private var error: String?
+    @State private var showingReset = debugForgotPasswordEmail != nil
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 220 / 255, green: 213 / 255, blue: 1), Color(red: 246 / 255, green: 233 / 255, blue: 1), Style.canvas], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
@@ -102,9 +114,11 @@ private struct AuthView: View {
                 }
                 if let error { Text(error).foregroundStyle(.red).font(.footnote) }
                 Button(signup ? "Create account" : "Sign in") { submit() }.buttonStyle(PrimaryButton())
+                if !signup { Button("Forgot password?") { showingReset = true }.frame(maxWidth: .infinity).foregroundStyle(Style.green) }
                 Button(signup ? "Already have an account? Sign in" : "New here? Create account") { signup.toggle() }.frame(maxWidth: .infinity).foregroundStyle(Style.green)
             }.padding(24) }
         }
+        .sheet(isPresented: $showingReset) { PasswordResetView(backend: backend, email: email) }
     }
     private func roleCard(_ value: UserRole) -> some View {
         Button { role = value } label: {
@@ -119,6 +133,40 @@ private struct AuthView: View {
             onSignedIn(try await backend.currentUser())
         } catch { self.error = error.localizedDescription }
     } }
+}
+
+private struct PasswordResetView: View {
+    let backend: any Backend
+    @Environment(\.dismiss) private var dismiss
+    @State private var email: String
+    @State private var message: String?
+    @State private var error: String?
+    init(backend: any Backend, email: String) { self.backend = backend; _email = State(initialValue: email) }
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Reset your password").font(.title2.bold())
+                TextField("Email address", text: $email).textContentType(.emailAddress).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled().fieldStyle()
+                if let message { Text(message).font(.footnote).foregroundStyle(Style.green) }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                Button("Send reset link") { submit() }.buttonStyle(PrimaryButton())
+                Spacer()
+            }.padding(24).background(Style.canvas.ignoresSafeArea()).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+        .task {
+            #if DEBUG
+            if debugForgotPasswordEmail != nil { submit() }
+            #endif
+        }
+    }
+    private func submit() {
+        Task {
+            switch await requestPasswordReset(email: email, backend: backend) {
+            case .invalidEmail: error = "Enter a valid email address."; message = nil
+            case .requested: error = nil; message = "If an account exists for that email, we've sent a reset link."
+            }
+        }
+    }
 }
 
 private struct PrimaryButton: ButtonStyle {

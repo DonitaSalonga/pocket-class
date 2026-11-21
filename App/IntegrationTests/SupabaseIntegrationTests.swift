@@ -152,4 +152,7 @@ private func signedUp(_ role: UserRole, name: String) async throws -> (backend: 
     let theirs = try await a.backend.createCourse(name: "Theirs", description: nil)
     _ = try? await raw.from("courses").update(["name": "Hijacked"]).eq("id", value: theirs.id.uuidString).execute()
     #expect(try await a.backend.myCourses() == [theirs])
+
+@Test func resetPasswordAcceptsUnknownWellFormedEmail() async throws {
+    try await backend().resetPassword(email: "reset+\(UUID().uuidString.lowercased())@example.com")
 }
