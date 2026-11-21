@@ -86,6 +86,7 @@ struct CourseDetail: View {
             // Screenshot hook: `-debugOpenFile pdf|pptx` previews the first file of that type.
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-debugOpenFile"), args.indices.contains(i + 1), let file = files.first(where: { $0.fileType == args[i + 1] }) { kind = file.kind; open(file) }
+            if debugFlag("-debugUploadSheet"), let url = Bundle.main.url(forResource: "sample", withExtension: "pdf") { picked = PickedFile(url: url) }
             // Screenshot hook: `-debugManage rename|delete` opens that action for the first file.
             if let i = args.firstIndex(of: "-debugManage"), args.indices.contains(i + 1), let first = visible.first {
                 if args[i + 1] == "rename" { renaming = first } else { deleting = first }
@@ -197,7 +198,7 @@ private struct FileRow: View {
                     Button("Rename", systemImage: "pencil", action: onRename)
                     Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
                 } label: { Image(systemName: "ellipsis").font(.headline).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle()) }
-                .accessibilityLabel("More actions for \(file.title)").accessibilityIdentifier("fileMenu")
+                .tint(.secondary).accessibilityLabel("More actions for \(file.title)").accessibilityIdentifier("fileMenu")
             }
         }.padding(14).background(.white, in: RoundedRectangle(cornerRadius: 18)).shadow(color: .black.opacity(0.05), radius: 8, y: 3)
     }
@@ -295,6 +296,6 @@ private struct RenameSheet: View {
                     Button("Save") { Task { if let renamed = await form.submit(using: backend) { onRenamed(renamed) } } }.disabled(form.isSaving)
                 }
             }
-        }.presentationDetents([.medium])
+        }.presentationDetents([.medium]).presentationBackground(Style.canvas)
     }
 }

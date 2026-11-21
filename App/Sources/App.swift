@@ -65,7 +65,7 @@ private struct RootView: View {
             if value("-debugChip") == "exercises" { debugKind = .exercise }
             // An optional name after the flag picks that Course; shared pool Teachers collect Courses from other tests.
             if arguments.contains("-debugOpenCourse") { selectedCourse = value("-debugOpenCourse").flatMap { name in coursesList.first { $0.name == name } } ?? coursesList.first }
-            if debugJoinCode != nil { showingJoin = true }
+            if debugJoinCode != nil || arguments.contains("-debugOpenJoin") { showingJoin = true }
             #endif
         }
     }
@@ -80,7 +80,7 @@ private struct RootView: View {
             if coursesState == .loading && coursesList.isEmpty { Spacer(); LoadingView(label: "Loading courses…"); Spacer() }
             else if coursesState == .failed && coursesList.isEmpty { Spacer(); StatusView(icon: "wifi.slash", title: "Could not load courses", detail: "Check your connection and try again.") { Task { await loadCourses() } }; Spacer() }
             else if coursesList.isEmpty { Spacer(); StatusView(icon: "books.vertical", title: user.role == .teacher ? "No courses yet" : "No courses joined", detail: user.role == .teacher ? "Tap + New Course to make your first one." : "Tap Join with code and enter the code from your Teacher."); Spacer() }
-            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index, counts: CourseFileCounts(files: filesList).label(for: course.id)) }.buttonStyle(.plain) } }.padding(.bottom, 4) }.contentMargins(.bottom, 8, for: .scrollContent) }
+            else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index, counts: CourseFileCounts(files: filesList).label(for: course.id)) }.buttonStyle(.plain) } }.padding(.bottom, 4) }.contentMargins(.bottom, 8, for: .scrollContent).scrollClipDisabled() }
             Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } else { showingJoin = true } }.buttonStyle(PrimaryButton())
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
@@ -117,7 +117,7 @@ private let debugForgotPasswordEmail: String? = {
 private struct AuthView: View {
     let backend: any Backend
     let onSignedIn: (AppUser?) -> Void
-    @State private var signup = debugForgotPasswordEmail == nil
+    @State private var signup = debugForgotPasswordEmail == nil && !debugFlag("-debugSignIn")
     @State private var role: UserRole = .teacher
     @State private var name = ""
     @State private var email = debugForgotPasswordEmail ?? ""
@@ -229,6 +229,7 @@ private struct NewCourseSheet: View {
     } }
 }
 
+/// Screenshot hooks: `-debugSignIn` starts on Sign in, `-debugOpenJoin` opens the join sheet with a sample code typed but not sent, `-debugUploadSheet` opens the upload sheet.
 /// Screenshot hooks: `-debugOpenRoster` opens the Roster, `-debugConfirmLeave` asks to leave, once a Course is open.
 func debugFlag(_ flag: String) -> Bool {
     #if DEBUG
@@ -263,7 +264,7 @@ private struct JoinCourseSheet: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) { if form.isSubmitting { ProgressView() } else { Button("Join", action: join) } }
         }
-        .task { if let debugCode { form.code = debugCode; join() } }
+        .task { if let debugCode { form.code = debugCode; join() } else if debugFlag("-debugOpenJoin") { form.code = "K7M2QX" } }
     } }
 }
 
