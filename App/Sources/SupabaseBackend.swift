@@ -34,8 +34,12 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
-        guard let user = try await currentUser(), user.role == .teacher else { return [] }
+        guard let user = try await currentUser() else { return [] }
         return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+    }
+    func joinCourse(code: String) async throws -> Course {
+        struct JoinRequest: Encodable { let join_code_input: String }
+        return try await client.rpc("join_course", params: JoinRequest(join_code_input: code)).execute().value
     }
 }
 
