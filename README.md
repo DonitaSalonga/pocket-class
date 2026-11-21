@@ -44,4 +44,4 @@ Debug builds accept `-debugEmail <email> -debugPassword <password> [-debugTab pr
 
 ## Cleaning up test data
 
-Integration tests and screenshot runs leave Courses on the pool Teachers' accounts. Delete them from the Course screen (Delete Course) or with the SQL cleanup described in `scripts/cleanup-test-data.sql`.
+Integration tests and screenshot runs leave Courses on the pool Teachers' accounts. Delete them from the Course screen (Delete Course) or run `scripts/cleanup-test-data.sh` (needs the linked supabase CLI, `jq`, `curl`). It prints counts, then with `--yes` deletes every Course (and its stored files) owned by the pool Teachers and the stale `test+*`/`qa+*@example.com` auth users. It never touches `pool-*` or demo accounts.
