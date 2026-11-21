@@ -32,3 +32,31 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2.tests
+  Project2IntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [App/IntegrationTests]
+    dependencies:
+      - target: Project2
+      - package: Supabase
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2.integration-tests
+schemes:
+  Project2:
+    build:
+      targets:
+        Project2: all
+        Project2Tests: [test]
+    test:
+      targets:
+        - Project2Tests
+  Project2Integration:
+    build:
+      targets:
+        Project2: all
+        Project2IntegrationTests: [test]
+    test:
+      targets:
+        - Project2IntegrationTests

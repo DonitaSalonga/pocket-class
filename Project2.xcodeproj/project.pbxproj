@@ -13,10 +13,19 @@
 		6251AC16E0D5C4B58ADED45C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = EC39F7E4C365F3BC83EBF62D /* Supabase */; };
 		6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F44387C86DF0C0B4EBC66B /* App.swift */; };
 		7441362B37513B4A85315530 /* SupabaseBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */; };
+		8A52896257184F7525567A09 /* SupabaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */; };
+		9C192556193ABF75930F973A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 746C74198CFBB1D3F5B6394D /* Supabase */; };
 		F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D69FB99F0A53017602551CD /* Backend.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		04A7850FE7391D5EF2780B71 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FC5CFD74098A30005825C7C6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BF297A854847287FF9643253;
+			remoteInfo = Project2;
+		};
 		11DCCB2EF34F9CF1555A40F2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = FC5CFD74098A30005825C7C6 /* Project object */;
@@ -30,13 +39,23 @@
 		14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthBackendTests.swift; sourceTree = "<group>"; };
 		2188D8AE91666DF2039DEBCC /* Project2.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Project2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2D69FB99F0A53017602551CD /* Backend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backend.swift; sourceTree = "<group>"; };
+		4A5AB9212482B2E88C75A035 /* Project2IntegrationTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2IntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		65F44387C86DF0C0B4EBC66B /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		796F8D81D722A17930EC7A83 /* Project2Tests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7C8474F8F14772198705A82 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
 		CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseBackend.swift; sourceTree = "<group>"; };
+		FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		31E3CCBE8D359EDF2C517CDC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C192556193ABF75930F973A /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7FAD703A89A3D2F4146CEDBF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -59,6 +78,7 @@
 		02563AFCCD6D51B507DC7D40 = {
 			isa = PBXGroup;
 			children = (
+				DA7D48EB3D6496483A49A7E8 /* IntegrationTests */,
 				FBA80505C50FB977700D834E /* Sources */,
 				19613E1FCBFF57E3E3BF000F /* Tests */,
 				FD21B782FCE3CE89A21AEBB0 /* Products */,
@@ -72,6 +92,15 @@
 			);
 			name = Tests;
 			path = App/Tests;
+			sourceTree = "<group>";
+		};
+		DA7D48EB3D6496483A49A7E8 /* IntegrationTests */ = {
+			isa = PBXGroup;
+			children = (
+				FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */,
+			);
+			name = IntegrationTests;
+			path = App/IntegrationTests;
 			sourceTree = "<group>";
 		};
 		FBA80505C50FB977700D834E /* Sources */ = {
@@ -90,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				2188D8AE91666DF2039DEBCC /* Project2.app */,
+				4A5AB9212482B2E88C75A035 /* Project2IntegrationTests.xctest */,
 				796F8D81D722A17930EC7A83 /* Project2Tests.xctest */,
 			);
 			name = Products;
@@ -98,6 +128,26 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1CE88A5176E6F43C5EAC4FC7 /* Project2IntegrationTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 267EAADD19DC4762ECE22662 /* Build configuration list for PBXNativeTarget "Project2IntegrationTests" */;
+			buildPhases = (
+				E9C58B4BFC200C5C57627FC2 /* Sources */,
+				31E3CCBE8D359EDF2C517CDC /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B457DB30FDA18090E47F0E1C /* PBXTargetDependency */,
+			);
+			name = Project2IntegrationTests;
+			packageProductDependencies = (
+				746C74198CFBB1D3F5B6394D /* Supabase */,
+			);
+			productName = Project2IntegrationTests;
+			productReference = 4A5AB9212482B2E88C75A035 /* Project2IntegrationTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		97E5F7BF03868027E42D0A1C /* Project2Tests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EFC22D70404E83AAEB4ADDFA /* Build configuration list for PBXNativeTarget "Project2Tests" */;
@@ -167,6 +217,7 @@
 			targets = (
 				BF297A854847287FF9643253 /* Project2 */,
 				97E5F7BF03868027E42D0A1C /* Project2Tests */,
+				1CE88A5176E6F43C5EAC4FC7 /* Project2IntegrationTests */,
 			);
 		};
 /* End PBXProject section */
@@ -177,6 +228,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				44E5E1DADCEF7898A81EEC80 /* AuthBackendTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E9C58B4BFC200C5C57627FC2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A52896257184F7525567A09 /* SupabaseIntegrationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -198,6 +257,11 @@
 			isa = PBXTargetDependency;
 			target = BF297A854847287FF9643253 /* Project2 */;
 			targetProxy = 11DCCB2EF34F9CF1555A40F2 /* PBXContainerItemProxy */;
+		};
+		B457DB30FDA18090E47F0E1C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BF297A854847287FF9643253 /* Project2 */;
+			targetProxy = 04A7850FE7391D5EF2780B71 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -318,6 +382,23 @@
 			};
 			name = Debug;
 		};
+		70966C41FE9D86F7DE429813 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.donita.project2.integration-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Project2.app/Project2";
+			};
+			name = Debug;
+		};
 		8CFAF8B1345793516555C49D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -391,9 +472,35 @@
 			};
 			name = Release;
 		};
+		BDBF6C231D02DD22B0B5A083 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.donita.project2.integration-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Project2.app/Project2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		267EAADD19DC4762ECE22662 /* Build configuration list for PBXNativeTarget "Project2IntegrationTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				70966C41FE9D86F7DE429813 /* Debug */,
+				BDBF6C231D02DD22B0B5A083 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		2DFCB001F562F5FEA1181628 /* Build configuration list for PBXNativeTarget "Project2" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -436,6 +543,11 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		04CBB9BBDD08803B2015349A /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9128891F51CEBD78DE945424 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		746C74198CFBB1D3F5B6394D /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9128891F51CEBD78DE945424 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;

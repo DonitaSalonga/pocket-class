@@ -5,8 +5,26 @@ import Testing
     let backend = InMemoryBackend()
     try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
     #expect(try await backend.currentUser()?.role == .teacher)
+    await #expect(throws: BackendError.roleIsImmutable) { try await backend.updateRole(.student) }
     try await backend.signOut()
     #expect(try await backend.currentUser() == nil)
+}
+
+@Test func signupKeepsRoleAndDuplicateEmailIsRefused() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
+    #expect(try await backend.currentUser()?.role == .teacher)
+    await #expect(throws: BackendError.duplicateEmail) {
+        try await backend.signUp(email: "teacher@example.com", password: "another password", name: "Changed", role: .student)
+    }
+}
+
+@Test func sessionRestoresAfterBackendRecreation() async throws {
+    let store = InMemoryBackend.Store()
+    let firstLaunch = InMemoryBackend(store: store)
+    try await firstLaunch.signUp(email: "student@example.com", password: "correct horse", name: "Mia Chen", role: .student)
+    let nextLaunch = InMemoryBackend(store: store)
+    #expect(try await nextLaunch.currentUser()?.role == .student)
 }
 
 @Test func wrongPasswordIsRefused() async throws {

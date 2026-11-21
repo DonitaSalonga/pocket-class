@@ -14,7 +14,16 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         let profile: Profile = try await client.from("profiles").select().eq("id", value: user.id.uuidString).single().execute().value
         return AppUser(id: user.id, name: profile.name, email: user.email ?? "", role: profile.role)
     }
+    func currentUserID() async throws -> UUID? { try? await client.auth.user().id }
     func resetPassword(email: String) async throws { try await client.auth.resetPasswordForEmail(email) }
+    func updateRole(_ role: UserRole) async throws {
+        guard let id = try? await client.auth.user().id else { throw BackendError.invalidCredentials }
+        try await client.from("profiles").update(["role": role.rawValue]).eq("id", value: id.uuidString).execute()
+    }
+    func profile(id: UUID) async throws -> AppUser? {
+        guard let profile: Profile = try? await client.from("profiles").select().eq("id", value: id.uuidString).single().execute().value else { return nil }
+        return AppUser(id: id, name: profile.name, email: "", role: profile.role)
+    }
 }
 
 private struct Profile: Decodable { let name: String; let role: UserRole }
