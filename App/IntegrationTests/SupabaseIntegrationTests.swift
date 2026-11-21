@@ -115,11 +115,11 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
 
 @Test func studentsAndSignedOutUsersCannotReadCourses() async throws {
     let teacher = try await signedIn(.teacherA)
-    _ = try await teacher.backend.createCourse(name: unique("Biology"), description: nil)
+    let course = try await teacher.backend.createCourse(name: unique("Biology"), description: nil)
     let student = try await signedIn(.studentB)
     let studentRaw = student.raw
     let seenByStudent: [Course] = try await studentRaw.from("courses").select().execute().value
-    #expect(seenByStudent.isEmpty)
+    #expect(seenByStudent.contains { $0.id == course.id } == false)
     let anon = try await rawClient()
     let seenByAnon: [Course] = (try? await anon.from("courses").select().execute().value) ?? []
     #expect(seenByAnon.isEmpty)
@@ -209,17 +209,34 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
     let b = try await signedIn(.studentB)
     _ = try await a.backend.joinCourse(code: course.joinCode)
     _ = try await b.backend.joinCourse(code: course.joinCode)
-    let roster = try await teacher.backend.roster(courseID: course.id)
-    #expect(roster.contains { $0.name == PoolAccount.studentA.name })
-    #expect(roster.allSatisfy { $0.joinedAt <= .now })
-    let rawRoster: [Membership] = try await a.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
     let aID = try #require(await a.backend.currentUserID())
     let bID = try #require(await b.backend.currentUserID())
+
+    // The Teacher sees names and join dates (server clock, so allow skew against this device).
+    let roster = try await teacher.backend.roster(courseID: course.id)
+    #expect(Set(roster.map(\.studentID)) == [aID, bID])
+    #expect(roster.contains { $0.name == PoolAccount.studentA.name })
+    #expect(roster.allSatisfy { abs($0.joinedAt.timeIntervalSinceNow) < 120 })
+
+    // A Student reads only the own row, cannot call the Roster, and cannot remove another Student.
+    let rawRoster: [Membership] = try await a.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
     #expect(rawRoster.count == 1 && rawRoster.first?.studentID == aID)
+    #expect(try await a.backend.roster(courseID: course.id).isEmpty)
     try await a.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id })
+    #expect(try await teacher.backend.roster(courseID: course.id).count == 2)
+
+    // The Teacher removes B: B loses the Course at the database, not only in a list.
+    try await teacher.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await teacher.backend.roster(courseID: course.id).map(\.studentID) == [aID])
     #expect(try await b.backend.myCourses().contains { $0.id == course.id } == false)
+    let byID: [Course] = try await b.raw.from("courses").select().eq("id", value: course.id.uuidString).execute().value
+    #expect(byID.isEmpty)
+
+    // A leaves and loses access too; another Teacher never sees the Roster.
     try await a.backend.leaveCourse(courseID: course.id)
     #expect(try await a.backend.myCourses().contains { $0.id == course.id } == false)
+    #expect(try await teacher.backend.roster(courseID: course.id).isEmpty)
     let otherTeacher = try await signedIn(.teacherB)
     #expect(try await otherTeacher.backend.roster(courseID: course.id).isEmpty)
 }
