@@ -63,6 +63,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func allFiles() async throws -> [CourseFile] {
         try await client.from("course_files").select().order("uploaded_at", ascending: false).execute().value
     }
+    func download(file: CourseFile) async throws -> URL {
+        try await FileCache.shared.open(file) { try await client.storage.from("course-files").download(path: file.storagePath) }
+    }
     private static func mimeType(_ ext: String) -> String {
         switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }
     }
