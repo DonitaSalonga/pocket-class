@@ -54,7 +54,16 @@ struct CourseDetail: View {
             }.padding(24)
         }
         .frame(maxWidth: .infinity, alignment: .leading).background(Style.canvas)
-        .task { files = (try? await backend.files(courseID: course.id)) ?? [] }
+        .task {
+            files = (try? await backend.files(courseID: course.id)) ?? []
+            #if DEBUG
+            // Screenshot hook: `-debugManage rename|delete` opens that action for the first file.
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-debugManage"), args.indices.contains(i + 1), let first = visible.first {
+                if args[i + 1] == "rename" { renaming = first } else { deleting = first }
+            }
+            #endif
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: Self.pickerTypes) { result in
             switch result {
             case .success(let url): importError = nil; picked = PickedFile(url: url)
@@ -69,6 +78,7 @@ struct CourseDetail: View {
         }
         .confirmationDialog("Delete this file?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { file in
             Button("Delete", role: .destructive) { Task { await delete(file) } }
+            Button("Cancel", role: .cancel) {}
         } message: { file in
             Text("“\(file.title)” will be removed for everyone. This cannot be undone.")
         }
