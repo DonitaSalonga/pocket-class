@@ -11,9 +11,12 @@ targets:
   Project2:
     type: application
     platform: iOS
-    # DebugSamples are two tiny real files used by the DEBUG `-debugUploadSamples` launch argument.
+    # DebugSamples are two tiny real files used by the DEBUG `-debugUploadSamples` launch argument; Release leaves them out.
     sources: [App/Sources, App/DebugSamples]
     settings:
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: sample.pdf sample.pptx
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.donita.project2
