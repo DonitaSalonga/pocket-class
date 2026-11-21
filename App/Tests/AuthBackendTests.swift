@@ -85,6 +85,9 @@ private actor FailingBackend: Backend {
     func createCourse(name: String, description: String?) throws -> Course { throw URLError(.notConnectedToInternet) }
     func myCourses() throws -> [Course] { [] }
     func joinCourse(code: String) throws -> Course { throw URLError(.notConnectedToInternet) }
+    func roster(courseID: UUID) throws -> [RosterStudent] { [] }
+    func removeStudent(courseID: UUID, studentID: UUID) throws {}
+    func leaveCourse(courseID: UUID) throws {}
 }
 
 @MainActor @Test func newCourseWithBlankNameShowsErrorAndCreatesNothing() async throws {
@@ -147,6 +150,9 @@ private actor SpyBackend: Backend {
     func createCourse(name: String, description: String?) async throws -> Course { throw BackendError.notATeacher }
     func myCourses() async throws -> [Course] { [] }
     func joinCourse(code: String) async throws -> Course { throw BackendError.invalidJoinCode }
+    func roster(courseID: UUID) async throws -> [RosterStudent] { [] }
+    func removeStudent(courseID: UUID, studentID: UUID) async throws {}
+    func leaveCourse(courseID: UUID) async throws {}
 }
 
 @Test func malformedEmailIsRefusedWithoutCallingBackend() async {
@@ -204,6 +210,23 @@ private func teacherCourseAndStudent() async throws -> (course: Course, student:
     let again = try await setup.student.joinCourse(code: setup.course.joinCode)
     #expect(again == setup.course)
     #expect(await setup.student.myCourses().count == 1)
+}
+
+@Test func teacherCanViewRosterRemoveStudentAndStudentCanLeave() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    _ = try await setup.student.joinCourse(code: setup.course.joinCode)
+    let studentID = try #require(await setup.student.currentUserID())
+    try await setup.teacher.signIn(email: "t@example.com", password: "correct horse")
+    let roster = try await setup.teacher.roster(courseID: setup.course.id)
+    #expect(roster.map(\.name) == ["Mia Chen"])
+    #expect(roster.first?.joinedAt != .distantPast)
+    try await setup.teacher.removeStudent(courseID: setup.course.id, studentID: studentID)
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    #expect(await setup.student.myCourses().isEmpty)
+    _ = try await setup.student.joinCourse(code: setup.course.joinCode)
+    try await setup.student.leaveCourse(courseID: setup.course.id)
+    #expect(await setup.student.myCourses().isEmpty)
 }
 
 @Test func teacherCannotJoinACourse() async throws {

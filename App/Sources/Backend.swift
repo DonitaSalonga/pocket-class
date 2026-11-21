@@ -32,6 +32,13 @@ struct Course: Codable, Equatable, Identifiable, Sendable {
     let createdAt: Date
     enum CodingKeys: String, CodingKey { case id, name, description; case teacherID = "teacher_id"; case joinCode = "join_code"; case createdAt = "created_at" }
 }
+struct RosterStudent: Codable, Equatable, Identifiable, Sendable {
+    let studentID: UUID
+    let name: String
+    let joinedAt: Date
+    var id: UUID { studentID }
+    enum CodingKeys: String, CodingKey { case studentID = "student_id", name; case joinedAt = "joined_at" }
+}
 enum CourseFileKind: String, Codable, Sendable { case presentation, exercise }
 struct CourseFile: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
@@ -70,6 +77,9 @@ protocol Backend: Sendable {
     func createCourse(name: String, description: String?) async throws -> Course
     func myCourses() async throws -> [Course]
     func joinCourse(code: String) async throws -> Course
+    func roster(courseID: UUID) async throws -> [RosterStudent]
+    func removeStudent(courseID: UUID, studentID: UUID) async throws
+    func leaveCourse(courseID: UUID) async throws
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile
     func files(courseID: UUID) async throws -> [CourseFile]
     func allFiles() async throws -> [CourseFile]
@@ -77,10 +87,46 @@ protocol Backend: Sendable {
     func regenerateJoinCode(courseID: UUID) async throws -> String
     /// Removes the Course with its Roster and files. Owning Teacher only.
     func deleteCourse(_ course: Course) async throws
+    /// Local file URL for a Course file. Served from the on-device cache when present, so opened files work offline.
+    func download(file: CourseFile) async throws -> URL
+    /// Changes only the title (trimmed, never blank) and returns the updated file.
+    func renameFile(id: UUID, title: String) async throws -> CourseFile
+    /// Removes the stored object and the row, so the file disappears for everyone.
+    func deleteFile(_ file: CourseFile) async throws
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller." } }
+/// Downloaded files live in Caches (the system may purge them) as `<course id>/<file id>/<title>.<ext>`, so Quick Look and the share sheet show the title.
+struct FileCache: Sendable {
+    let directory: URL
+    static let shared = FileCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("CourseFiles"))
+
+    func url(for file: CourseFile) -> URL {
+        let title = file.title.replacingOccurrences(of: "/", with: "-")
+        return directory.appendingPathComponent(file.courseID.uuidString).appendingPathComponent(file.id.uuidString).appendingPathComponent("\(title).\(file.fileType)")
+    }
+    func removeCourse(_ id: UUID) { try? FileManager.default.removeItem(at: directory.appendingPathComponent(id.uuidString)) }
+    /// Drops cached Courses the user is no longer on (left, removed from the Roster).
+    func keepOnly(_ courseIDs: [UUID]) {
+        let keep = Set(courseIDs.map(\.uuidString))
+        for dir in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] where !keep.contains(dir.lastPathComponent) { try? FileManager.default.removeItem(at: dir) }
+    }
+    func clear() { try? FileManager.default.removeItem(at: directory) }
+    func remove(_ file: CourseFile) { try? FileManager.default.removeItem(at: url(for: file).deletingLastPathComponent()) }
+    /// Cached copy if present, else `fetch` and keep it. A fetch failure with no copy propagates.
+    func open(_ file: CourseFile, fetch: () async throws -> Data) async throws -> URL {
+        let url = url(for: file)
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        // A rename changes the file name but not the id, so keep the copy instead of downloading it again.
+        if let old = try? FileManager.default.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil).first, (try? FileManager.default.moveItem(at: old, to: url)) != nil { return url }
+        let data = try await fetch()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+}
+
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher, notAStudent, invalidJoinCode, unsupportedFileType, fileTooLarge, fileUnavailable, blankTitle, fileNotFound
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses."; case .notAStudent: "Only Students can join courses."; case .invalidJoinCode: "Join Code is incorrect or no longer valid."; case .unsupportedFileType: "This file type is not supported for this list."; case .fileTooLarge: "Files must be 50 MB or smaller."; case .fileUnavailable: "This file is not available."; case .blankTitle: "Enter a title."; case .fileNotFound: "This file no longer exists, or you cannot change it." } }
 }
 
 extension Backend {
@@ -89,13 +135,20 @@ extension Backend {
     func allFiles() async throws -> [CourseFile] { [] }
     func regenerateJoinCode(courseID: UUID) async throws -> String { throw BackendError.notConfigured }
     func deleteCourse(_ course: Course) async throws { throw BackendError.notConfigured }
+    func download(file: CourseFile) async throws -> URL { throw BackendError.notConfigured }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile { throw BackendError.notConfigured }
+    func deleteFile(_ file: CourseFile) async throws { throw BackendError.notConfigured }
 }
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: Set<String> = []; fileprivate var files: [CourseFile] = [] }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = []; fileprivate var memberships: [String: Date] = [:]; fileprivate var files: [CourseFile] = []; fileprivate var blobs: [UUID: Data] = [:]
+        /// Test hooks: `offline` makes uncached downloads fail; `downloadCount` counts fetches that reached the store.
+        var offline = false; private(set) var downloadCount = 0
+        fileprivate func fetch(_ id: UUID) throws -> Data { if offline { throw URLError(.notConnectedToInternet) }; downloadCount += 1; return blobs[id] ?? Data() } }
     private let store: Store
-    init(store: Store = Store()) { self.store = store }
+    private let cache: FileCache
+    init(store: Store = Store(), cache: FileCache = .shared) { self.store = store; self.cache = cache }
 
     func signUp(email: String, password: String, name: String, role: UserRole) throws {
         let key = email.lowercased()
@@ -125,23 +178,43 @@ actor InMemoryBackend: Backend {
     }
     func myCourses() -> [Course] {
         guard let user = currentUser() else { return [] }
-        if user.role == .teacher { return store.courses.filter { $0.teacherID == user.id } }
-        return store.courses.filter { store.memberships.contains("\(user.id):\($0.id)") }
+        let mine = user.role == .teacher ? store.courses.filter { $0.teacherID == user.id } : store.courses.filter { store.memberships["\(user.id):\($0.id)"] != nil }
+        cache.keepOnly(mine.map(\.id))
+        return mine
     }
     func joinCourse(code: String) throws -> Course {
         guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard let course = store.courses.first(where: { $0.joinCode.uppercased() == normalized }) else { throw BackendError.invalidJoinCode }
-        store.memberships.insert("\(user.id):\(course.id)")
+        store.memberships["\(user.id):\(course.id)", default: .now] = store.memberships["\(user.id):\(course.id)"] ?? .now
         return course
     }
+    func roster(courseID: UUID) throws -> [RosterStudent] {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { return [] }
+        return store.memberships.compactMap { key, joinedAt in
+            let parts = key.split(separator: ":")
+            guard parts.count == 2, parts[1] == Substring(courseID.uuidString), let id = UUID(uuidString: String(parts[0])), let account = store.accounts.values.first(where: { $0.user.id == id }) else { return nil }
+            return RosterStudent(studentID: id, name: account.user.name, joinedAt: joinedAt)
+        }
+    }
+    func removeStudent(courseID: UUID, studentID: UUID) throws {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { return }
+        store.memberships["\(studentID):\(courseID)"] = nil
+    }
+    func leaveCourse(courseID: UUID) throws {
+        guard let user = currentUser(), user.role == .student else { throw BackendError.notAStudent }
+        store.memberships["\(user.id):\(courseID)"] = nil
+        cache.removeCourse(courseID)
+}
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
         let file = CourseFile(id: UUID(), courseID: courseID, kind: kind, title: title, storagePath: CourseFileValidation.newStoragePath(courseID: courseID, fileName: fileName), fileType: URL(fileURLWithPath: fileName).pathExtension.lowercased(), size: data.count, uploadedAt: .now)
-        store.files.append(file); return file
+        store.files.append(file); store.blobs[file.id] = data; return file
     }
     func files(courseID: UUID) async throws -> [CourseFile] {
+        // Like RLS, a Student off the Roster sees nothing rather than an error.
+        if let user = currentUser(), user.role == .student { return isMember(user, courseID) ? store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt } : [] }
         guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
         return store.files.filter { $0.courseID == courseID }.sorted { $0.uploadedAt > $1.uploadedAt }
     }
@@ -163,10 +236,35 @@ actor InMemoryBackend: Backend {
         guard let user = currentUser(), store.courses.contains(where: { $0.id == course.id && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
         store.courses.removeAll { $0.id == course.id }
         store.files.removeAll { $0.courseID == course.id }
-        store.memberships = store.memberships.filter { !$0.hasSuffix(":\(course.id)") }
+        store.memberships = store.memberships.filter { !$0.key.hasSuffix(":\(course.id)") }
+        store.blobs = store.blobs.filter { id, _ in store.files.contains { $0.id == id } }
+        cache.removeCourse(course.id)
     }
     /// Test hook: nothing under the Course survives, not even rows another Teacher or Student could reach.
     func hasNoRowsFor(courseID: UUID) -> Bool {
-        !store.courses.contains { $0.id == courseID } && !store.files.contains { $0.courseID == courseID } && !store.memberships.contains { $0.hasSuffix(":\(courseID)") }
+        !store.courses.contains { $0.id == courseID } && !store.files.contains { $0.courseID == courseID } && !store.memberships.keys.contains { $0.hasSuffix(":\(courseID)") }
+    }
+    private func isMember(_ user: AppUser, _ courseID: UUID) -> Bool { store.memberships["\(user.id):\(courseID)"] != nil }
+    func download(file: CourseFile) async throws -> URL {
+        guard let user = currentUser(), user.role == .student ? isMember(user, file.courseID) : store.courses.contains(where: { $0.id == file.courseID && $0.teacherID == user.id }) else { throw BackendError.fileUnavailable }
+        return try await cache.open(file) { try store.fetch(file.id) }
+    }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw BackendError.blankTitle }
+        guard let index = store.files.firstIndex(where: { $0.id == id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: store.files[index])
+        let old = store.files[index]
+        store.files[index] = CourseFile(id: old.id, courseID: old.courseID, kind: old.kind, title: title, storagePath: old.storagePath, fileType: old.fileType, size: old.size, uploadedAt: old.uploadedAt)
+        return store.files[index]
+    }
+    func deleteFile(_ file: CourseFile) async throws {
+        guard let stored = store.files.first(where: { $0.id == file.id }) else { throw BackendError.fileNotFound }
+        try requireOwner(of: stored)
+        store.files.removeAll { $0.id == file.id }
+        cache.remove(file)
+    }
+    private func requireOwner(of file: CourseFile) throws {
+        guard let user = currentUser(), user.role == .teacher, store.courses.contains(where: { $0.id == file.courseID && $0.teacherID == user.id }) else { throw BackendError.notATeacher }
     }
 }

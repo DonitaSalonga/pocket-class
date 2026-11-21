@@ -49,3 +49,14 @@ private func scene() async throws -> (backend: InMemoryBackend, course: Course) 
     #expect(try await backend.myCourses().isEmpty)
     await #expect(throws: BackendError.invalidJoinCode) { try await backend.joinCourse(code: course.joinCode) }
 }
+
+@Test func deletingACourseClearsItsCachedFilesOnThisDevice() async throws {
+    let cache = FileCache(directory: FileManager.default.temporaryDirectory.appendingPathComponent("cache-\(UUID())"))
+    let teacher = InMemoryBackend(cache: cache)
+    try await teacher.signUp(email: "t@example.com", password: "secret", name: "T", role: .teacher)
+    let course = try await teacher.createCourse(name: "Science", description: nil)
+    let file = try await teacher.uploadFile(courseID: course.id, kind: .exercise, title: "Sheet", data: Data([1]), fileName: "sheet.pdf")
+    let url = try await teacher.download(file: file)
+    try await teacher.deleteCourse(course)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}

@@ -33,7 +33,7 @@ private struct RootView: View {
         }
         .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
         .sheet(isPresented: $showingJoin) { JoinCourseSheet(backend: backend, debugCode: debugJoinCode) { course in if !coursesList.contains(where: { $0.id == course.id }) { coursesList.insert(course, at: 0) }; showingJoin = false } }
-        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend, kind: debugKind) { filesList.insert($0, at: 0) } }
+        .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher, backend: backend, onUploaded: { filesList.insert($0, at: 0) }, onLeave: { coursesList.removeAll { $0.id == course.id }; selectedCourse = nil }, onChanged: { Task { filesList = (try? await backend.allFiles()) ?? filesList } }, kind: debugKind) }
         .task {
             #if DEBUG
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
@@ -44,7 +44,7 @@ private struct RootView: View {
                 try? await backend.signIn(email: email, password: password)
                 tab = value("-debugTab") == "profile" ? 1 : 0
             }
-            // `-debugSeedCourses A,B` creates Courses for the signed-in Teacher; `-debugOpenCourse` opens the first one.
+            // `-debugSeedCourses A,B` creates Courses for the signed-in Teacher; `-debugOpenCourse [name]` opens the first one or the named one.
             if let seed = value("-debugSeedCourses") { for name in seed.split(separator: ",") { _ = try? await backend.createCourse(name: String(name), description: nil) } }
             #endif
             user = try? await backend.currentUser()
@@ -61,7 +61,8 @@ private struct RootView: View {
             filesList = (try? await backend.allFiles()) ?? []
             #if DEBUG
             if value("-debugChip") == "exercises" { debugKind = .exercise }
-            if arguments.contains("-debugOpenCourse") { selectedCourse = coursesList.first }
+            // An optional name after the flag picks that Course; shared pool Teachers collect Courses from other tests.
+            if arguments.contains("-debugOpenCourse") { selectedCourse = value("-debugOpenCourse").flatMap { name in coursesList.first { $0.name == name } } ?? coursesList.first }
             if debugJoinCode != nil { showingJoin = true }
             #endif
         }
@@ -216,6 +217,15 @@ private struct NewCourseSheet: View {
             ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { if let course = await form.submit(using: backend) { onCreated(course) } } } }
         }
     } }
+}
+
+/// Screenshot hooks: `-debugOpenRoster` opens the Roster, `-debugConfirmLeave` asks to leave, once a Course is open.
+func debugFlag(_ flag: String) -> Bool {
+    #if DEBUG
+    ProcessInfo.processInfo.arguments.contains(flag)
+    #else
+    false
+    #endif
 }
 
 /// Screenshot hook: `-debugJoinCode <code>` opens the join sheet with that code typed and submits it.

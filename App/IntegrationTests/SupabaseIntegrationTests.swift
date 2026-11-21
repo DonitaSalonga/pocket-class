@@ -13,7 +13,7 @@ final class MemoryStorage: AuthLocalStorage, @unchecked Sendable {
 }
 
 func backend(_ storage: MemoryStorage = MemoryStorage()) -> SupabaseBackend {
-    SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey, storage: storage)
+    SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey, storage: storage, cache: FileCache(directory: FileManager.default.temporaryDirectory.appendingPathComponent("cache-\(UUID())")))
 }
 
 private func account() -> (email: String, password: String) {
@@ -301,9 +301,104 @@ private func cleanUp(_ files: [CourseFile], with raw: SupabaseClient) async {
     #expect(seenByOther.isEmpty)
 }
 
+@Test func teacherManagesRosterAndStudentsCannotReadOrRemoveMembers() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster management"), description: nil)
+    let a = try await signedIn(.studentA)
+    let b = try await signedIn(.studentB)
+    _ = try await a.backend.joinCourse(code: course.joinCode)
+    _ = try await b.backend.joinCourse(code: course.joinCode)
+    let aID = try #require(await a.backend.currentUserID())
+    let bID = try #require(await b.backend.currentUserID())
+
+    // The Teacher sees names and join dates (server clock, so allow skew against this device).
+    let roster = try await teacher.backend.roster(courseID: course.id)
+    #expect(Set(roster.map(\.studentID)) == [aID, bID])
+    #expect(roster.contains { $0.name == PoolAccount.studentA.name })
+    #expect(roster.allSatisfy { abs($0.joinedAt.timeIntervalSinceNow) < 120 })
+
+    // A Student reads only the own row, cannot call the Roster, and cannot remove another Student.
+    let rawRoster: [Membership] = try await a.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    #expect(rawRoster.count == 1 && rawRoster.first?.studentID == aID)
+    #expect(try await a.backend.roster(courseID: course.id).isEmpty)
+    try await a.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id })
+    #expect(try await teacher.backend.roster(courseID: course.id).count == 2)
+
+    // The Teacher removes B: B loses the Course at the database, not only in a list.
+    try await teacher.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await teacher.backend.roster(courseID: course.id).map(\.studentID) == [aID])
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id } == false)
+    let byID: [Course] = try await b.raw.from("courses").select().eq("id", value: course.id.uuidString).execute().value
+    #expect(byID.isEmpty)
+
+    // A leaves and loses access too; another Teacher never sees the Roster.
+    try await a.backend.leaveCourse(courseID: course.id)
+    #expect(try await a.backend.myCourses().contains { $0.id == course.id } == false)
+    #expect(try await teacher.backend.roster(courseID: course.id).isEmpty)
+    let otherTeacher = try await signedIn(.teacherB)
+    #expect(try await otherTeacher.backend.roster(courseID: course.id).isEmpty)
+}
+
 private struct Membership: Decodable {
     let courseID: UUID
-    enum CodingKeys: String, CodingKey { case courseID = "course_id" }
+    let studentID: UUID
+    enum CodingKeys: String, CodingKey { case courseID = "course_id"; case studentID = "student_id" }
+}
+
+@Test func rosterStudentListsAndDownloadsFilesButOtherStudentAndOutsiderCannot() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster files"), description: nil)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Handout", data: tinyPDF, fileName: "handout.pdf")
+    let student = try await signedIn(.studentA)
+    _ = try await student.backend.joinCourse(code: course.joinCode)
+    #expect(try await student.backend.files(courseID: course.id).map(\.id) == [file.id])
+    let local = try await student.backend.download(file: file)
+    #expect(try Data(contentsOf: local) == tinyPDF)
+    // A Roster Student can read but not write.
+    await #expect(throws: (any Error).self) { try await student.raw.storage.from("course-files").remove(paths: [file.storagePath]).isEmpty ? { throw CocoaError(.fileNoSuchFile) }() : () }
+    _ = try? await student.raw.from("course_files").delete().eq("id", value: file.id.uuidString).execute()
+    #expect(try await teacher.backend.files(courseID: course.id).map(\.id) == [file.id])
+    for account in [PoolAccount.studentB, .outsider] {
+        let other = try await signedIn(account)
+        #expect(try await other.backend.files(courseID: course.id).isEmpty, "\(account) listed files")
+        await #expect(throws: (any Error).self, "\(account) downloaded") { try await other.backend.download(file: file) }
+    }
+    await cleanUp([file], with: teacher.raw)
+}
+
+@Test func teacherRenamesAndDeletesOwnFileIncludingTheStoredObject() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Manage files"), description: nil)
+    let file = try await teacher.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Draft", data: tinyPDF, fileName: "draft.pdf")
+    let renamed = try await teacher.backend.renameFile(id: file.id, title: "  Final  ")
+    #expect(renamed.title == "Final")
+    #expect(try await teacher.backend.files(courseID: course.id).map(\.title) == ["Final"])
+    await #expect(throws: BackendError.blankTitle) { try await teacher.backend.renameFile(id: file.id, title: "  ") }
+    try await teacher.backend.deleteFile(renamed)
+    #expect(try await teacher.backend.files(courseID: course.id).isEmpty)
+    await #expect(throws: (any Error).self, "object still downloadable") { try await teacher.raw.storage.from("course-files").download(path: file.storagePath) }
+}
+
+@Test func otherTeacherAndStudentCannotRenameOrDeleteAndTheDatabaseKeepsOtherColumnsFixed() async throws {
+    struct Patch: Encodable { let kind: String?; let storage_path: String?; let course_id: UUID? }
+    let owner = try await signedIn(.teacherA)
+    let course = try await owner.backend.createCourse(name: unique("Guarded files"), description: nil)
+    let other = try await owner.backend.createCourse(name: unique("Other course"), description: nil)
+    let file = try await owner.backend.uploadFile(courseID: course.id, kind: .exercise, title: "Keep", data: tinyPDF, fileName: "keep.pdf")
+    for account in [PoolAccount.teacherB, .studentA] {
+        let intruder = try await signedIn(account)
+        await #expect(throws: (any Error).self, "\(account) renamed") { try await intruder.backend.renameFile(id: file.id, title: "Hijacked") }
+        await #expect(throws: (any Error).self, "\(account) deleted") { try await intruder.backend.deleteFile(file) }
+    }
+    // The owner cannot change anything but the title, even bypassing the app.
+    for patch in [Patch(kind: "presentation", storage_path: nil, course_id: nil), Patch(kind: nil, storage_path: "\(course.id.uuidString.lowercased())/moved.pdf", course_id: nil), Patch(kind: nil, storage_path: nil, course_id: other.id)] {
+        await #expect(throws: (any Error).self, "owner changed an immutable column") { try await owner.raw.from("course_files").update(patch).eq("id", value: file.id.uuidString).execute() }
+    }
+    let after = try await owner.backend.files(courseID: course.id)
+    #expect(after == [file])
+    #expect(try await owner.raw.storage.from("course-files").download(path: file.storagePath) == tinyPDF)
+    await cleanUp([file], with: owner.raw)
 }
 
 @Test func regeneratedJoinCodeRefusesTheOldOneAndAcceptsTheNewOne() async throws {

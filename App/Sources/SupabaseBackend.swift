@@ -3,8 +3,10 @@ import Supabase
 
 final class SupabaseBackend: Backend, @unchecked Sendable {
     private let client: SupabaseClient
+    private let cache: FileCache
     /// `storage` holds the persisted session; tests pass their own because the default Keychain needs a signed host.
-    init(url: URL, anonKey: String, storage: any AuthLocalStorage = AuthClient.Configuration.defaultLocalStorage) {
+    init(url: URL, anonKey: String, storage: any AuthLocalStorage = AuthClient.Configuration.defaultLocalStorage, cache: FileCache = .shared) {
+        self.cache = cache
         client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey, options: .init(auth: .init(storage: storage, emitLocalSessionAsInitialSession: true)))
     }
     func signUp(email: String, password: String, name: String, role: UserRole) async throws {
@@ -13,7 +15,8 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
     func signIn(email: String, password: String) async throws {
         _ = try await client.auth.signIn(email: email, password: password)
     }
-    func signOut() async throws { try await client.auth.signOut() }
+    // Cached files belong to the signed-in user, so the next account on this device must not see them.
+    func signOut() async throws { cache.clear(); try await client.auth.signOut() }
     func currentUser() async throws -> AppUser? {
         guard let user = client.auth.currentSession?.user else { return nil }
         let profile: Profile = try await client.from("profiles").select().eq("id", value: user.id.uuidString).single().execute().value
@@ -34,7 +37,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
-        return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        let courses: [Course] = try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        cache.keepOnly(courses.map(\.id))
+        return courses
     }
     func joinCourse(code: String) async throws -> Course {
         struct JoinRequest: Encodable { let join_code_input: String }
@@ -48,6 +53,18 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
             default: throw error
             }
         }
+    }
+    func roster(courseID: UUID) async throws -> [RosterStudent] {
+        struct Request: Encodable { let target_course_id: UUID }
+        return try await client.rpc("course_roster", params: Request(target_course_id: courseID)).execute().value
+    }
+    func removeStudent(courseID: UUID, studentID: UUID) async throws {
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: studentID.uuidString).execute()
+    }
+    func leaveCourse(courseID: UUID) async throws {
+        guard let id = try await currentUserID() else { throw BackendError.invalidCredentials }
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: id.uuidString).execute()
+        cache.removeCourse(courseID)
     }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)
@@ -87,6 +104,27 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         }
         let deleted: [Course] = try await client.from("courses").delete().eq("id", value: course.id.uuidString).select().execute().value
         guard !deleted.isEmpty else { throw BackendError.notATeacher }
+        cache.removeCourse(course.id)
+    }
+    func download(file: CourseFile) async throws -> URL {
+        try await cache.open(file) { try await client.storage.from("course-files").download(path: file.storagePath) }
+    }
+    func renameFile(id: UUID, title: String) async throws -> CourseFile {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { throw BackendError.blankTitle }
+        // RLS hides rows the caller does not own, so an unauthorized update matches zero rows instead of failing.
+        let rows: [CourseFile] = try await client.from("course_files").update(["title": title]).eq("id", value: id.uuidString).select().execute().value
+        guard let file = rows.first else { throw BackendError.fileNotFound }
+        return file
+    }
+    /// Object first, then row. If the object removal fails nothing changed and the file stays listed, so the Teacher can retry.
+    /// If the row delete fails after the object is gone, the row stays listed with no object; retrying removes the row, because removing a missing object is not an error.
+    /// Removing the row first would risk the opposite: an orphaned object that nothing lists and nobody can delete.
+    func deleteFile(_ file: CourseFile) async throws {
+        _ = try await client.storage.from("course-files").remove(paths: [file.storagePath])
+        let rows: [CourseFile] = try await client.from("course_files").delete().eq("id", value: file.id.uuidString).select().execute().value
+        guard !rows.isEmpty else { throw BackendError.fileNotFound }
+        cache.remove(file)
     }
     private static func mimeType(_ ext: String) -> String {
         switch ext { case "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"; case "ppt": "application/vnd.ms-powerpoint"; case "key": "application/x-iwork-keynote-sffkey"; case "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; default: "application/pdf" }
