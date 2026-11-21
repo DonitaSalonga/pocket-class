@@ -17,6 +17,7 @@
 		8A52896257184F7525567A09 /* SupabaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */; };
 		8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */; };
 		9C192556193ABF75930F973A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 746C74198CFBB1D3F5B6394D /* Supabase */; };
+		D884DEC14D247057855630F2 /* JoinCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */; };
 		F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D69FB99F0A53017602551CD /* Backend.swift */; };
 /* End PBXBuildFile section */
 
@@ -44,6 +45,7 @@
 		2D69FB99F0A53017602551CD /* Backend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backend.swift; sourceTree = "<group>"; };
 		2DB41944E31F9D70562F5A40 /* TestAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestAccounts.swift; sourceTree = "<group>"; };
 		4A5AB9212482B2E88C75A035 /* Project2IntegrationTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2IntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinCourseForm.swift; sourceTree = "<group>"; };
 		65F44387C86DF0C0B4EBC66B /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		796F8D81D722A17930EC7A83 /* Project2Tests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7C8474F8F14772198705A82 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
@@ -113,6 +115,7 @@
 			children = (
 				65F44387C86DF0C0B4EBC66B /* App.swift */,
 				2D69FB99F0A53017602551CD /* Backend.swift */,
+				5933EEED53BEE1B0F1C3397B /* JoinCourseForm.swift */,
 				1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */,
 				CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */,
 				B7C8474F8F14772198705A82 /* SupabaseConfig.swift */,
@@ -252,6 +255,7 @@
 			files = (
 				6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */,
 				F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */,
+				D884DEC14D247057855630F2 /* JoinCourseForm.swift in Sources */,
 				8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */,
 				7441362B37513B4A85315530 /* SupabaseBackend.swift in Sources */,
 				35679487DBD1DB705BD119D3 /* SupabaseConfig.swift in Sources */,

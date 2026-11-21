@@ -84,6 +84,7 @@ private actor FailingBackend: Backend {
     func profile(id: UUID) throws -> AppUser? { nil }
     func createCourse(name: String, description: String?) throws -> Course { throw URLError(.notConnectedToInternet) }
     func myCourses() throws -> [Course] { [] }
+    func joinCourse(code: String) throws -> Course { throw URLError(.notConnectedToInternet) }
 }
 
 @MainActor @Test func newCourseWithBlankNameShowsErrorAndCreatesNothing() async throws {
@@ -145,6 +146,7 @@ private actor SpyBackend: Backend {
     func profile(id: UUID) async throws -> AppUser? { nil }
     func createCourse(name: String, description: String?) async throws -> Course { throw BackendError.notATeacher }
     func myCourses() async throws -> [Course] { [] }
+    func joinCourse(code: String) async throws -> Course { throw BackendError.invalidJoinCode }
 }
 
 @Test func malformedEmailIsRefusedWithoutCallingBackend() async {
@@ -164,4 +166,78 @@ private actor SpyBackend: Backend {
 @Test func backendFailureStillGivesNeutralOutcome() async {
     let backend = SpyBackend(resetError: BackendError.invalidCredentials)
     #expect(await requestPasswordReset(email: "ghost@example.com", backend: backend) == .requested)
+}
+
+/// One Teacher with a Course and a Student on the same store; both backends share it like two devices share a server.
+private func teacherCourseAndStudent() async throws -> (course: Course, student: InMemoryBackend, otherStudent: InMemoryBackend, teacher: InMemoryBackend) {
+    let store = InMemoryBackend.Store()
+    let teacher = InMemoryBackend(store: store)
+    try await teacher.signUp(email: "t@example.com", password: "correct horse", name: "Teacher", role: .teacher)
+    let course = try await teacher.createCourse(name: "Biology", description: nil)
+    let student = InMemoryBackend(store: store)
+    try await student.signUp(email: "s@example.com", password: "correct horse", name: "Mia Chen", role: .student)
+    let otherStudent = InMemoryBackend(store: store)
+    try await otherStudent.signUp(email: "o@example.com", password: "correct horse", name: "Outsider", role: .student)
+    try await teacher.signIn(email: "t@example.com", password: "correct horse")
+    return (course, student, otherStudent, teacher)
+}
+
+@Test func studentJoinsWithCodeIgnoringCaseAndSpacesAndSeesCourse() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    let joined = try await setup.student.joinCourse(code: "  \(setup.course.joinCode.lowercased()) \n")
+    #expect(joined == setup.course)
+    #expect(await setup.student.myCourses() == [setup.course])
+}
+
+@Test func wrongJoinCodeIsRefusedWithTypedError() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    await #expect(throws: BackendError.invalidJoinCode) { try await setup.student.joinCourse(code: "ZZZZZZ") }
+    #expect(await setup.student.myCourses().isEmpty)
+}
+
+@Test func joiningTwiceIsANoOp() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    _ = try await setup.student.joinCourse(code: setup.course.joinCode)
+    let again = try await setup.student.joinCourse(code: setup.course.joinCode)
+    #expect(again == setup.course)
+    #expect(await setup.student.myCourses().count == 1)
+}
+
+@Test func teacherCannotJoinACourse() async throws {
+    let setup = try await teacherCourseAndStudent()
+    await #expect(throws: BackendError.notAStudent) { try await setup.teacher.joinCourse(code: setup.course.joinCode) }
+}
+
+@Test func studentWhoDidNotJoinDoesNotSeeCourse() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    _ = try await setup.student.joinCourse(code: setup.course.joinCode)
+    try await setup.otherStudent.signIn(email: "o@example.com", password: "correct horse")
+    #expect(await setup.otherStudent.myCourses().isEmpty)
+}
+
+@MainActor @Test func joinFormUppercasesAndTrimsCodeAndShowsWrongCodeError() async throws {
+    let setup = try await teacherCourseAndStudent()
+    try await setup.student.signIn(email: "s@example.com", password: "correct horse")
+    let form = JoinCourseForm()
+    form.code = "zzzzzz"
+    #expect(form.code == "ZZZZZZ")
+    #expect(await form.submit(using: setup.student) == nil)
+    #expect(form.error == "Join Code is incorrect or no longer valid.")
+    form.code = "  \(setup.course.joinCode.lowercased()) "
+    #expect(await form.submit(using: setup.student) == setup.course)
+    #expect(form.error == nil)
+}
+
+@MainActor @Test func joinFormAsksForCodeWhenBlankAndShowsGenericErrorOnFailure() async throws {
+    let form = JoinCourseForm()
+    form.code = "   "
+    #expect(await form.submit(using: FailingBackend()) == nil)
+    #expect(form.error == "Enter a Join Code.")
+    form.code = "ABC234"
+    #expect(await form.submit(using: FailingBackend()) == nil)
+    #expect(form.error == "Could not join the course. Check your connection and try again.")
 }

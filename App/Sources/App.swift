@@ -15,6 +15,7 @@ private struct RootView: View {
     @State private var tab = 0
     @State private var coursesList: [Course] = []
     @State private var showingNewCourse = false
+    @State private var showingJoin = false
     @State private var selectedCourse: Course?
     var body: some View {
         Group {
@@ -29,6 +30,7 @@ private struct RootView: View {
             } else { AuthView(backend: backend) { user = $0 } }
         }
         .sheet(isPresented: $showingNewCourse) { NewCourseSheet(backend: backend) { coursesList.insert($0, at: 0); showingNewCourse = false } }
+        .sheet(isPresented: $showingJoin) { JoinCourseSheet(backend: backend, debugCode: debugJoinCode) { course in if !coursesList.contains(where: { $0.id == course.id }) { coursesList.insert(course, at: 0) }; showingJoin = false } }
         .sheet(item: $selectedCourse) { course in CourseDetail(course: course, teacher: user?.role == .teacher) }
         .task {
             #if DEBUG
@@ -47,6 +49,7 @@ private struct RootView: View {
             coursesList = (try? await backend.myCourses()) ?? []
             #if DEBUG
             if arguments.contains("-debugOpenCourse") { selectedCourse = coursesList.first }
+            if debugJoinCode != nil { showingJoin = true }
             #endif
         }
     }
@@ -58,9 +61,9 @@ private struct RootView: View {
                 avatar(user, size: 48)
             }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
-            if coursesList.isEmpty { Spacer(); Text("Your courses will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity); Spacer() }
+            if coursesList.isEmpty { Spacer(); Text(user.role == .teacher ? "Your courses will appear here." : "Courses you join will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity); Spacer() }
             else { ScrollView { VStack(spacing: 14) { ForEach(Array(coursesList.enumerated()), id: \.element.id) { index, course in Button { selectedCourse = course } label: { CourseCard(course: course, index: index) }.buttonStyle(.plain) } } } }
-            Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } }.buttonStyle(PrimaryButton()).disabled(user.role != .teacher).opacity(user.role == .teacher ? 1 : 0.72)
+            Button(user.role == .teacher ? "+ New Course" : "Join with code") { if user.role == .teacher { showingNewCourse = true } else { showingJoin = true } }.buttonStyle(PrimaryButton())
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
     private func profile(_ user: AppUser) -> some View {
@@ -198,6 +201,35 @@ private struct NewCourseSheet: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { if let course = await form.submit(using: backend) { onCreated(course) } } } }
         }
+    } }
+}
+
+/// Screenshot hook: `-debugJoinCode <code>` opens the join sheet with that code typed and submits it.
+private let debugJoinCode: String? = {
+    #if DEBUG
+    let arguments = ProcessInfo.processInfo.arguments
+    return arguments.firstIndex(of: "-debugJoinCode").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+    #else
+    nil
+    #endif
+}()
+
+private struct JoinCourseSheet: View {
+    let backend: any Backend
+    let debugCode: String?
+    let onJoined: (Course) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var form = JoinCourseForm()
+    private func join() { Task { if let course = await form.submit(using: backend) { onJoined(course) } } }
+    var body: some View { NavigationStack { Form {
+            Section("Ask your Teacher for the Join Code") { TextField("Join Code", text: $form.code).textInputAutocapitalization(.characters).autocorrectionDisabled().font(.system(.title3, design: .monospaced).bold()).submitLabel(.join).onSubmit(join) }
+            if let error = form.error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("joinCourseError") } }
+        }
+        .navigationTitle("Join with code").navigationBarTitleDisplayMode(.inline).toolbar {
+            ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            ToolbarItem(placement: .confirmationAction) { Button("Join", action: join) }
+        }
+        .task { if let debugCode { form.code = debugCode; join() } }
     } }
 }
 
