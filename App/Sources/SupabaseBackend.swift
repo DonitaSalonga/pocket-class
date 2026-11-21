@@ -37,7 +37,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
     }
     func myCourses() async throws -> [Course] {
-        return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        let courses: [Course] = try await client.from("courses").select().order("created_at", ascending: false).execute().value
+        cache.keepOnly(courses.map(\.id))
+        return courses
     }
     func joinCourse(code: String) async throws -> Course {
         struct JoinRequest: Encodable { let join_code_input: String }
@@ -51,6 +53,18 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
             default: throw error
             }
         }
+    }
+    func roster(courseID: UUID) async throws -> [RosterStudent] {
+        struct Request: Encodable { let target_course_id: UUID }
+        return try await client.rpc("course_roster", params: Request(target_course_id: courseID)).execute().value
+    }
+    func removeStudent(courseID: UUID, studentID: UUID) async throws {
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: studentID.uuidString).execute()
+    }
+    func leaveCourse(courseID: UUID) async throws {
+        guard let id = try await currentUserID() else { throw BackendError.invalidCredentials }
+        try await client.from("course_memberships").delete().eq("course_id", value: courseID.uuidString).eq("student_id", value: id.uuidString).execute()
+        cache.removeCourse(courseID)
     }
     func uploadFile(courseID: UUID, kind: CourseFileKind, title: String, data: Data, fileName: String) async throws -> CourseFile {
         try CourseFileValidation.validate(kind: kind, fileName: fileName, size: data.count)

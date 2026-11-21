@@ -83,3 +83,31 @@ private func courseWithFile(store: InMemoryBackend.Store, cache: FileCache, data
     #expect(url.lastPathComponent == "Renamed.pdf")
     #expect(try Data(contentsOf: url) == Data("hello".utf8))
 }
+
+@Test func leavingACourseClearsItsCachedFilesOnThisDevice() async throws {
+    let store = InMemoryBackend.Store()
+    let (_, course, file) = try await courseWithFile(store: store, cache: tempCache())
+    let student = InMemoryBackend(store: store, cache: tempCache())
+    try await student.signUp(email: "s@example.com", password: "secret", name: "S", role: .student)
+    _ = try await student.joinCourse(code: course.joinCode)
+    let url = try await student.download(file: file)
+    try await student.leaveCourse(courseID: course.id)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}
+
+@Test func removedStudentsCachedFilesAreClearedWhenCoursesRefresh() async throws {
+    let store = InMemoryBackend.Store()
+    let (teacher, course, file) = try await courseWithFile(store: store, cache: tempCache())
+    let student = InMemoryBackend(store: store, cache: tempCache())
+    try await student.signUp(email: "s@example.com", password: "secret", name: "S", role: .student)
+    let studentID = try #require(await student.currentUserID())
+    _ = try await student.joinCourse(code: course.joinCode)
+    let url = try await student.download(file: file)
+    // Backends sharing a store share the signed-in user, so switch to the Teacher and back.
+    try await teacher.signIn(email: "t@example.com", password: "secret")
+    try await teacher.removeStudent(courseID: course.id, studentID: studentID)
+    #expect(FileManager.default.fileExists(atPath: url.path))
+    try await student.signIn(email: "s@example.com", password: "secret")
+    #expect(try await student.myCourses().isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+}

@@ -23,6 +23,7 @@ struct CourseDetail: View {
     let teacher: Bool
     let backend: any Backend
     let onUploaded: (CourseFile) -> Void
+    let onLeave: () -> Void
     var onChanged: () -> Void = {}
     @State var kind: CourseFileKind = .presentation
     @State private var files: [CourseFile] = []
@@ -32,6 +33,9 @@ struct CourseDetail: View {
     @State private var importError: String?
     @State private var opening: UUID?
     @State private var preview: PreviewItem?
+    @State private var showingRoster = debugFlag("-debugOpenRoster")
+    @State private var confirmingLeave = debugFlag("-debugConfirmLeave")
+    @State private var leaveError: String?
     @State private var renaming: CourseFile?
     @State private var deleting: CourseFile?
     @State private var manageError: String?
@@ -49,6 +53,9 @@ struct CourseDetail: View {
                 }
                 HStack(spacing: 10) { chip("Presentations", .presentation); chip("Exercises", .exercise) }
                 if teacher { Button("Upload") { importing = true }.buttonStyle(PrimaryButton()).accessibilityIdentifier("uploadButton") }
+                if teacher { Button("Roster") { showingRoster = true }.buttonStyle(PrimaryButton()) }
+                else { Button("Leave Course", role: .destructive) { confirmingLeave = true }.buttonStyle(PrimaryButton()) }
+                if let leaveError { Text(leaveError).font(.footnote).foregroundStyle(.red) }
                 if let importError { Text(importError).font(.footnote).foregroundStyle(.red) }
                 if let manageError { Text(manageError).font(.footnote).foregroundStyle(.red).accessibilityIdentifier("manageError") }
                 if visible.isEmpty { Text(kind == .presentation ? "No presentations yet." : "No exercises yet.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 20) }
@@ -75,6 +82,11 @@ struct CourseDetail: View {
             case .failure: importError = "Could not open that file."
             }
         }
+        .sheet(isPresented: $showingRoster) { RosterView(course: course, backend: backend) }
+        .confirmationDialog("Leave \(course.name)?", isPresented: $confirmingLeave, titleVisibility: .visible) {
+            Button("Leave Course", role: .destructive) { Task { do { try await backend.leaveCourse(courseID: course.id); onLeave() } catch { leaveError = error.localizedDescription } } }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("You will lose access to this course and its files.") }
         .sheet(item: $renaming) { file in
             RenameSheet(form: RenameFileForm(file: file), backend: backend) { renamed in
                 if let index = files.firstIndex(where: { $0.id == renamed.id }) { files[index] = renamed }
@@ -191,6 +203,31 @@ private struct UploadSheet: View {
                 }
             }
         }.interactiveDismissDisabled(form.isUploading)
+    }
+}
+
+private struct RosterView: View {
+    let course: Course
+    let backend: any Backend
+    @Environment(\.dismiss) private var dismiss
+    @State private var students: [RosterStudent] = []
+    @State private var selected: RosterStudent?
+    @State private var error: String?
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let error { ContentUnavailableView("Roster unavailable", systemImage: "person.2", description: Text(error)) }
+                else if students.isEmpty { ContentUnavailableView("No students yet", systemImage: "person.2") }
+                else { List(students) { student in HStack { VStack(alignment: .leading, spacing: 4) { Text(student.name).font(.headline); Text("Joined \(student.joinedAt.formatted(date: .abbreviated, time: .omitted))").font(.caption).foregroundStyle(.secondary) } ; Spacer(); Button("Remove", role: .destructive) { selected = student }.buttonStyle(.borderless) } } }
+            }
+            .navigationTitle("Roster").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .confirmationDialog("Remove \(selected?.name ?? "student")?", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), titleVisibility: .visible) {
+                Button("Remove Student", role: .destructive) { guard let selected else { return }; Task { do { try await backend.removeStudent(courseID: course.id, studentID: selected.studentID); students.removeAll { $0.id == selected.id }; self.selected = nil } catch { self.error = error.localizedDescription } } }
+                Button("Cancel", role: .cancel) { selected = nil }
+            } message: { Text("They will lose access to this course and its files.") }
+            .task { do { students = try await backend.roster(courseID: course.id) } catch { self.error = error.localizedDescription } }
+        }
     }
 }
 
