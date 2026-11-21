@@ -23,6 +23,15 @@ struct AppUser: Equatable, Identifiable {
     let email: String
     let role: UserRole
 }
+struct Course: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let teacherID: UUID
+    let name: String
+    let description: String?
+    let joinCode: String
+    let createdAt: Date
+    enum CodingKeys: String, CodingKey { case id, name, description; case teacherID = "teacher_id"; case joinCode = "join_code"; case createdAt = "created_at" }
+}
 
 protocol Backend: Sendable {
     func signUp(email: String, password: String, name: String, role: UserRole) async throws
@@ -33,15 +42,17 @@ protocol Backend: Sendable {
     func resetPassword(email: String) async throws
     func updateRole(_ role: UserRole) async throws
     func profile(id: UUID) async throws -> AppUser?
+    func createCourse(name: String, description: String?) async throws -> Course
+    func myCourses() async throws -> [Course]
 }
 
-enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable
-    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed." } }
+enum BackendError: Error, LocalizedError { case invalidCredentials, duplicateEmail, notConfigured, roleIsImmutable, notATeacher
+    var errorDescription: String? { switch self { case .invalidCredentials: "Email or password is incorrect."; case .duplicateEmail: "An account with this email already exists."; case .notConfigured: "Supabase config is missing."; case .roleIsImmutable: "Account role cannot be changed."; case .notATeacher: "Only Teachers can create courses." } }
 }
 
 actor InMemoryBackend: Backend {
     fileprivate struct Account { let user: AppUser; let password: String }
-    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID? }
+    final class Store: @unchecked Sendable { fileprivate var accounts: [String: Account] = [:]; fileprivate var signedIn: UUID?; fileprivate var courses: [Course] = [] }
     private let store: Store
     init(store: Store = Store()) { self.store = store }
 
@@ -62,4 +73,14 @@ actor InMemoryBackend: Backend {
     func resetPassword(email: String) throws {}
     func updateRole(_ role: UserRole) throws { throw BackendError.roleIsImmutable }
     func profile(id: UUID) -> AppUser? { store.accounts.values.first { $0.user.id == id }?.user }
+    func createCourse(name: String, description: String?) throws -> Course {
+        guard let user = currentUser(), user.role == .teacher else { throw BackendError.notATeacher }
+        let alphabet = Array("23456789ABCDEFGHJKLMNPQRSTUVWXYZ")
+        var code: String
+        repeat { code = String((0..<6).map { _ in alphabet.randomElement()! }) } while store.courses.contains { $0.joinCode == code }
+        let course = Course(id: UUID(), teacherID: user.id, name: name, description: description, joinCode: code, createdAt: .now)
+        store.courses.append(course)
+        return course
+    }
+    func myCourses() -> [Course] { guard let user = currentUser(), user.role == .teacher else { return [] }; return store.courses.filter { $0.teacherID == user.id } }
 }

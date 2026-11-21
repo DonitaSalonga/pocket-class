@@ -28,6 +28,10 @@ EOF
 xcodegen generate
 ```
 
+### Integration test accounts
+
+Supabase limits auth sign-ups and sign-ins per IP (about 30 per 5 minutes), so the integration tests share a fixed pool of accounts instead of creating users per test: `teacherA`, `teacherB`, `studentA`, `studentB` and `outsider` (`pool-<name>@example.com`). On first use `App/IntegrationTests/TestAccounts.swift` creates `~/.config/project-2/test-accounts.env` (mode 600, random passwords, never in the repo), signs each account up if it cannot sign in, and signs in once per account per run. One test still does a real fresh sign-up. Pool teachers keep their Courses between runs (there is no delete policy), so tests give Courses unique names and never assert an exact list. Never call `signOut` on a pool account: it revokes the sessions of every test using it. If the env file is lost, delete the `pool-*` users in the Supabase dashboard and rerun. Each run costs about 14 auth calls, so leave a few minutes between full runs and do not run them in parallel.
+
 ## Sessions and signing
 
 The session lives in the Keychain, which needs a signed build. Build and run through Xcode (or `xcodebuild` without `CODE_SIGNING_ALLOWED=NO`) to stay signed in across launches. Integration tests use an in-memory session store instead, so they work unsigned.

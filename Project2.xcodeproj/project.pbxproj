@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0F53FBD8D1C2C5C0F119A0C5 /* TestAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB41944E31F9D70562F5A40 /* TestAccounts.swift */; };
 		35679487DBD1DB705BD119D3 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C8474F8F14772198705A82 /* SupabaseConfig.swift */; };
 		44E5E1DADCEF7898A81EEC80 /* AuthBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */; };
 		52E6841CDC67EF9DEBD3A64C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 04CBB9BBDD08803B2015349A /* Supabase */; };
@@ -14,6 +15,7 @@
 		6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F44387C86DF0C0B4EBC66B /* App.swift */; };
 		7441362B37513B4A85315530 /* SupabaseBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */; };
 		8A52896257184F7525567A09 /* SupabaseIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */; };
+		8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */; };
 		9C192556193ABF75930F973A /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 746C74198CFBB1D3F5B6394D /* Supabase */; };
 		F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D69FB99F0A53017602551CD /* Backend.swift */; };
 /* End PBXBuildFile section */
@@ -37,8 +39,10 @@
 
 /* Begin PBXFileReference section */
 		14AC1D8E170AB287F4630637 /* AuthBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthBackendTests.swift; sourceTree = "<group>"; };
+		1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewCourseForm.swift; sourceTree = "<group>"; };
 		2188D8AE91666DF2039DEBCC /* Project2.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Project2.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2D69FB99F0A53017602551CD /* Backend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backend.swift; sourceTree = "<group>"; };
+		2DB41944E31F9D70562F5A40 /* TestAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestAccounts.swift; sourceTree = "<group>"; };
 		4A5AB9212482B2E88C75A035 /* Project2IntegrationTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2IntegrationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		65F44387C86DF0C0B4EBC66B /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		796F8D81D722A17930EC7A83 /* Project2Tests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Project2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -98,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				FA8380FBBD971CFADCD9B607 /* SupabaseIntegrationTests.swift */,
+				2DB41944E31F9D70562F5A40 /* TestAccounts.swift */,
 			);
 			name = IntegrationTests;
 			path = App/IntegrationTests;
@@ -108,6 +113,7 @@
 			children = (
 				65F44387C86DF0C0B4EBC66B /* App.swift */,
 				2D69FB99F0A53017602551CD /* Backend.swift */,
+				1DB0E0CC94E631EB931B3C55 /* NewCourseForm.swift */,
 				CBA4553AA77358BD7E44E6E2 /* SupabaseBackend.swift */,
 				B7C8474F8F14772198705A82 /* SupabaseConfig.swift */,
 			);
@@ -236,6 +242,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8A52896257184F7525567A09 /* SupabaseIntegrationTests.swift in Sources */,
+				0F53FBD8D1C2C5C0F119A0C5 /* TestAccounts.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -245,6 +252,7 @@
 			files = (
 				6CBA6D2C0DB1577EAD3C91FC /* App.swift in Sources */,
 				F6927CA8EB0A14880C02B639 /* Backend.swift in Sources */,
+				8C64054862E836F12BD25491 /* NewCourseForm.swift in Sources */,
 				7441362B37513B4A85315530 /* SupabaseBackend.swift in Sources */,
 				35679487DBD1DB705BD119D3 /* SupabaseConfig.swift in Sources */,
 			);
