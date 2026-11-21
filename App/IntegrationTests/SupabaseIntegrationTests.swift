@@ -202,7 +202,30 @@ private func unique(_ name: String) -> String { "\(name) \(UUID().uuidString.pre
     #expect(seenByOther.isEmpty)
 }
 
+@Test func teacherManagesRosterAndStudentsCannotReadOrRemoveMembers() async throws {
+    let teacher = try await signedIn(.teacherA)
+    let course = try await teacher.backend.createCourse(name: unique("Roster management"), description: nil)
+    let a = try await signedIn(.studentA)
+    let b = try await signedIn(.studentB)
+    _ = try await a.backend.joinCourse(code: course.joinCode)
+    _ = try await b.backend.joinCourse(code: course.joinCode)
+    let roster = try await teacher.backend.roster(courseID: course.id)
+    #expect(roster.contains { $0.name == PoolAccount.studentA.name })
+    #expect(roster.allSatisfy { $0.joinedAt <= .now })
+    let rawRoster: [Membership] = try await a.raw.from("course_memberships").select().eq("course_id", value: course.id.uuidString).execute().value
+    let aID = try #require(await a.backend.currentUserID())
+    let bID = try #require(await b.backend.currentUserID())
+    #expect(rawRoster.count == 1 && rawRoster.first?.studentID == aID)
+    try await a.backend.removeStudent(courseID: course.id, studentID: bID)
+    #expect(try await b.backend.myCourses().contains { $0.id == course.id } == false)
+    try await a.backend.leaveCourse(courseID: course.id)
+    #expect(try await a.backend.myCourses().contains { $0.id == course.id } == false)
+    let otherTeacher = try await signedIn(.teacherB)
+    #expect(try await otherTeacher.backend.roster(courseID: course.id).isEmpty)
+}
+
 private struct Membership: Decodable {
     let courseID: UUID
-    enum CodingKeys: String, CodingKey { case courseID = "course_id" }
+    let studentID: UUID
+    enum CodingKeys: String, CodingKey { case courseID = "course_id"; case studentID = "student_id" }
 }
