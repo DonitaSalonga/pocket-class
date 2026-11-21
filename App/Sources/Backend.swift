@@ -6,6 +6,16 @@ enum EmailAddress {
     }
 }
 
+enum PasswordResetOutcome { case invalidEmail, requested }
+
+/// Refuses malformed emails without touching the backend. Backend errors are swallowed so the UI never reveals whether an account exists.
+func requestPasswordReset(email: String, backend: any Backend) async -> PasswordResetOutcome {
+    let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard EmailAddress.isValid(email) else { return .invalidEmail }
+    try? await backend.resetPassword(email: email)
+    return .requested
+}
+
 enum UserRole: String, Codable, CaseIterable { case teacher, student }
 struct AppUser: Equatable, Identifiable {
     let id: UUID

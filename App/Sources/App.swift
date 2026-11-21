@@ -30,6 +30,7 @@ private struct RootView: View {
             // Live-check hook: `-debugEmail x -debugPassword y [-debugTab profile]` signs in without typing.
             let arguments = ProcessInfo.processInfo.arguments
             func value(_ flag: String) -> String? { arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
+            if debugForgotPasswordEmail != nil { try? await backend.signOut() }
             if let email = value("-debugEmail"), let password = value("-debugPassword") {
                 try? await backend.signIn(email: email, password: password)
                 tab = value("-debugTab") == "profile" ? 1 : 0
@@ -68,16 +69,26 @@ private struct RootView: View {
     }
 }
 
+/// Screenshot hook: `-debugForgotPassword <email>` opens the reset sheet with that email and submits it.
+private let debugForgotPasswordEmail: String? = {
+    #if DEBUG
+    let arguments = ProcessInfo.processInfo.arguments
+    return arguments.firstIndex(of: "-debugForgotPassword").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+    #else
+    nil
+    #endif
+}()
+
 private struct AuthView: View {
     let backend: any Backend
     let onSignedIn: (AppUser?) -> Void
-    @State private var signup = true
+    @State private var signup = debugForgotPasswordEmail == nil
     @State private var role: UserRole = .teacher
     @State private var name = ""
-    @State private var email = ""
+    @State private var email = debugForgotPasswordEmail ?? ""
     @State private var password = ""
     @State private var error: String?
-    @State private var showingReset = false
+    @State private var showingReset = debugForgotPasswordEmail != nil
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 220 / 255, green: 213 / 255, blue: 1), Color(red: 246 / 255, green: 233 / 255, blue: 1), Style.canvas], startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
@@ -132,13 +143,18 @@ private struct PasswordResetView: View {
                 Spacer()
             }.padding(24).background(Style.canvas.ignoresSafeArea()).toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
+        .task {
+            #if DEBUG
+            if debugForgotPasswordEmail != nil { submit() }
+            #endif
+        }
     }
     private func submit() {
-        guard EmailAddress.isValid(email) else { error = "Enter a valid email address."; message = nil; return }
         Task {
-            try? await backend.resetPassword(email: email)
-            error = nil
-            message = "If an account exists for that email, we've sent a reset link."
+            switch await requestPasswordReset(email: email, backend: backend) {
+            case .invalidEmail: error = "Enter a valid email address."; message = nil
+            case .requested: error = nil; message = "If an account exists for that email, we've sent a reset link."
+            }
         }
     }
 }
