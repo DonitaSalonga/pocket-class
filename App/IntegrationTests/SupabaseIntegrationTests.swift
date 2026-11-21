@@ -72,3 +72,7 @@ private func account() -> (email: String, password: String) {
     let nextLaunch = backend(storage)
     #expect(try await nextLaunch.currentUser() == before)
 }
+
+@Test func resetPasswordAcceptsUnknownWellFormedEmail() async throws {
+    try await backend().resetPassword(email: "reset+\(UUID().uuidString.lowercased())@example.com")
+}
