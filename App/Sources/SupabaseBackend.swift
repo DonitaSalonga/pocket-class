@@ -81,7 +81,9 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         while true {
             let objects = try await bucket.list(path: folder, options: .init(limit: 1000))
             if objects.isEmpty { break }
-            _ = try await bucket.remove(paths: objects.map { "\(folder)/\($0.name)" })
+            // Roster Students can see the objects but storage policy removes none of them for a non-owner; stop instead of looping.
+            let removed = try await bucket.remove(paths: objects.map { "\(folder)/\($0.name)" })
+            guard !removed.isEmpty else { throw BackendError.notATeacher }
         }
         let deleted: [Course] = try await client.from("courses").delete().eq("id", value: course.id.uuidString).select().execute().value
         guard !deleted.isEmpty else { throw BackendError.notATeacher }
