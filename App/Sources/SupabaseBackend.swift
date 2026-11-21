@@ -29,6 +29,14 @@ final class SupabaseBackend: Backend, @unchecked Sendable {
         guard let profile: Profile = try? await client.from("profiles").select().eq("id", value: id.uuidString).single().execute().value else { return nil }
         return AppUser(id: id, name: profile.name, email: "", role: profile.role)
     }
+    func createCourse(name: String, description: String?) async throws -> Course {
+        struct NewCourse: Encodable { let name: String; let description: String? }
+        return try await client.from("courses").insert(NewCourse(name: name, description: description)).select().single().execute().value
+    }
+    func myCourses() async throws -> [Course] {
+        guard let user = try await currentUser(), user.role == .teacher else { return [] }
+        return try await client.from("courses").select().order("created_at", ascending: false).execute().value
+    }
 }
 
 private struct Profile: Decodable { let name: String; let role: UserRole }

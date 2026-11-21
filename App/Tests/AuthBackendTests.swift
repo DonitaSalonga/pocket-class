@@ -1,6 +1,34 @@
 import Testing
 @testable import Project2
 
+@Test func teacherCreatesAndListsOwnCoursesWithReadableUniqueCodes() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
+    let first = try await backend.createCourse(name: "Biology", description: nil)
+    let second = try await backend.createCourse(name: "Chemistry", description: "Lab")
+    #expect(await backend.myCourses().count == 2)
+    #expect(first.joinCode.count == 6 && first.joinCode.allSatisfy { "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".contains($0) })
+    #expect(first.joinCode != second.joinCode)
+}
+
+@Test func studentCannotCreateCourseAndCannotListCourses() async throws {
+    let backend = InMemoryBackend()
+    try await backend.signUp(email: "student@example.com", password: "correct horse", name: "Mia Chen", role: .student)
+    await #expect(throws: BackendError.invalidCredentials) { try await backend.createCourse(name: "Biology", description: nil) }
+    #expect(await backend.myCourses().isEmpty)
+}
+
+@Test func teachersCannotSeeEachOthersCourses() async throws {
+    let store = InMemoryBackend.Store()
+    let a = InMemoryBackend(store: store)
+    try await a.signUp(email: "a@example.com", password: "correct horse", name: "Teacher A", role: .teacher)
+    _ = try await a.createCourse(name: "Biology", description: nil)
+    try await a.signOut()
+    let b = InMemoryBackend(store: store)
+    try await b.signUp(email: "b@example.com", password: "correct horse", name: "Teacher B", role: .teacher)
+    #expect(await b.myCourses().isEmpty)
+}
+
 @Test func signOutClearsSession() async throws {
     let backend = InMemoryBackend()
     try await backend.signUp(email: "teacher@example.com", password: "correct horse", name: "Jordan Lee", role: .teacher)
