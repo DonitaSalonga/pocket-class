@@ -12,35 +12,54 @@ private enum Style {
 private struct RootView: View {
     private let backend: any Backend = SupabaseBackend(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey)
     @State private var user: AppUser?
-    @State private var mode = false
     @State private var tab = 0
     var body: some View {
         Group {
-            if let user { TabView(selection: $tab) {
-                courses(user).tabItem { Label("Courses", systemImage: "square.grid.2x2.fill") }.tag(0)
-                profile(user).tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }.tag(1)
-            }.tint(Style.green) } else { AuthView(backend: backend) { user = $0 } }
+            if let user {
+                VStack(spacing: 12) {
+                    Group { tab == 0 ? AnyView(courses(user)) : AnyView(profile(user)) }
+                    HStack(spacing: 8) {
+                        tabButton("Courses", icon: "square.grid.2x2.fill", index: 0)
+                        tabButton("Profile", icon: "person.crop.circle.fill", index: 1)
+                    }.padding(6).background(.white, in: Capsule()).shadow(color: .black.opacity(0.12), radius: 16, y: 5).padding(.bottom, 8)
+                }.background(Style.canvas.ignoresSafeArea())
+            } else { AuthView(backend: backend) { user = $0 } }
         }
-        .task { user = try? await backend.currentUser() }
+        .task {
+            let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), ["courses", "profile"].contains(arguments[index + 1]) {
+                user = AppUser(id: UUID(), name: "Jordan Lee", email: "jordan@example.com", role: .teacher)
+                tab = arguments[index + 1] == "profile" ? 1 : 0
+            } else { user = try? await backend.currentUser() }
+        }
     }
     private func courses(_ user: AppUser) -> some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Good morning,").foregroundStyle(.secondary)
-            Text(user.name).font(.largeTitle.bold())
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) { Text("Good morning,").foregroundStyle(.secondary); Text(user.name).font(.largeTitle.bold()) }
+                Spacer()
+                avatar(user, size: 48)
+            }.padding(.top, 50)
             Text("Your courses").font(.title2.bold()).padding(.top, 10)
             Spacer()
             Text("Your courses will appear here.").foregroundStyle(.secondary).frame(maxWidth: .infinity)
             Spacer()
-            Button(user.role == .teacher ? "+ New Course" : "Join with code") {}.buttonStyle(PrimaryButton())
+            Button(user.role == .teacher ? "+ New Course" : "Join with code") {}.buttonStyle(PrimaryButton()).disabled(true).opacity(0.72)
         }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Style.canvas)
     }
     private func profile(_ user: AppUser) -> some View {
         VStack(spacing: 16) {
-            Text(user.name.split(separator: " ").compactMap(\.first).map(String.init).joined()).font(.title.bold()).foregroundStyle(Style.green).frame(width: 88, height: 88).background(Style.green.opacity(0.12), in: Circle()).padding(.top, 80)
+            avatar(user, size: 88).padding(.top, 80)
             Text(user.name).font(.title2.bold()); Text(user.role.rawValue.capitalized).foregroundStyle(.secondary)
             Button("Sign out") { Task { try? await backend.signOut(); self.user = nil } }.buttonStyle(PrimaryButton())
             Spacer()
         }.padding(24).frame(maxWidth: .infinity).background(Style.canvas)
+    }
+    private func avatar(_ user: AppUser, size: CGFloat) -> some View {
+        Text(user.name.split(separator: " ").compactMap(\.first).map(String.init).joined()).font(.headline.bold()).foregroundStyle(Style.green).frame(width: size, height: size).background(Style.green.opacity(0.12), in: Circle()).accessibilityLabel("Profile avatar")
+    }
+    private func tabButton(_ title: String, icon: String, index: Int) -> some View {
+        Button { tab = index } label: { Label(title, systemImage: icon).font(.subheadline.bold()).foregroundStyle(tab == index ? .white : .secondary).padding(.horizontal, 19).padding(.vertical, 13).background(tab == index ? Style.green : .clear, in: Capsule()) }.accessibilityLabel(title)
     }
 }
 

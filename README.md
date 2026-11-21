@@ -8,6 +8,22 @@ Copy `App/SupabaseConfig.example.swift` to `App/Sources/SupabaseConfig.swift`, t
 
 ## Tests
 
-Run unit tests: `xcodebuild test -project Project2.xcodeproj -scheme Project2 -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' -only-testing:Project2Tests/AuthBackendTests`
+Run unit tests: `xcodebuild test -project Project2.xcodeproj -scheme Project2 -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' CODE_SIGNING_ALLOWED=NO`
 
-Run Supabase integration tests: `xcodebuild test -project Project2.xcodeproj -scheme Project2 -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' -only-testing:Project2Tests/SupabaseIntegrationTests`
+Run Supabase integration tests: `xcodebuild test -project Project2.xcodeproj -scheme Project2Integration -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' CODE_SIGNING_ALLOWED=NO`
+
+Generate the ignored config from `~/.config/project-2/supabase.env`:
+
+```sh
+set -a
+source ~/.config/project-2/supabase.env
+set +a
+cat > App/Sources/SupabaseConfig.swift <<EOF
+import Foundation
+enum SupabaseConfig {
+    static let url = URL(string: "$SUPABASE_URL")!
+    static let anonKey = "$SUPABASE_ANON_KEY"
+}
+EOF
+xcodegen generate
+```
